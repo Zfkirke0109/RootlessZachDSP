@@ -19,15 +19,18 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
-class AutoEqClient(val context: Context, callTimeout: Long = 10, customBaseUrl: String? = null): KoinComponent {
+class AutoEqClient(
+    private val context: Context,
+    callTimeout: Long = 10,
+    customBaseUrl: String? = null,
+) : KoinComponent {
 
     private val preferences: Preferences.App by inject()
 
-    private val http = OkHttpClient
-        .Builder()
+    private val http = OkHttpClient.Builder()
         .callTimeout(callTimeout, TimeUnit.SECONDS)
         .addInterceptor(PlutoInterceptor())
-        .addInterceptor(UserAgentInterceptor("RootlessJamesDSP v${BuildConfig.VERSION_NAME}"))
+        .addInterceptor(UserAgentInterceptor("RootlessZachDSP v${BuildConfig.VERSION_NAME}"))
         .build()
 
     private val retrofit: Retrofit
@@ -48,55 +51,91 @@ class AutoEqClient(val context: Context, callTimeout: Long = 10, customBaseUrl: 
         service = retrofit.create(AutoEqService::class.java)
     }
 
-    fun queryProfiles(query: String, onResponse: ((Array<AeqSearchResult>, Boolean /* isPartialResult */) -> Unit), onFailure: ((String) -> Unit)?) {
-        val call = service.queryProfiles(query)
-        call.enqueue(object : Callback<Array<AeqSearchResult>> {
-            override fun onResponse(call: Call<Array<AeqSearchResult>>, response: Response<Array<AeqSearchResult>>) {
-                if (response.code() == 200) {
-                    onResponse.invoke(response.body()!!, response.headers().get(HEADER_PARTIAL_RESULT) == "1")
-                }
-                else {
-                    onFailure?.invoke(context.getString(R.string.geq_api_network_error,
-                        context.getString(R.string.geq_api_network_error_details_code, response.code())
-                    ))
-                    Timber.e("queryProfiles: Server responded with ${response.code()} (${response.errorBody().toString()})")
+    fun queryProfiles(
+        query: String,
+        onResponse: (Array<AeqSearchResult>, Boolean) -> Unit,
+        onFailure: ((String) -> Unit)?,
+    ) {
+        service.queryProfiles(query).enqueue(object : Callback<Array<AeqSearchResult>> {
+            override fun onResponse(
+                call: Call<Array<AeqSearchResult>>,
+                response: Response<Array<AeqSearchResult>>,
+            ) {
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null) {
+                        onResponse(body, response.headers()[HEADER_PARTIAL_RESULT] == "1")
+                    } else {
+                        onFailure?.invoke(networkError("The server returned an empty response."))
+                    }
+                } else {
+                    val details = context.getString(
+                        R.string.geq_api_network_error_details_code,
+                        response.code(),
+                    )
+                    onFailure?.invoke(networkError(details))
+                    Timber.e(
+                        "queryProfiles: Server responded with %d (%s)",
+                        response.code(),
+                        response.errorBody()?.string(),
+                    )
                 }
             }
 
-            override fun onFailure(call: Call<Array<AeqSearchResult>>, t: Throwable) {
-                Timber.e("queryProfiles: $t")
-                onFailure?.invoke(context.getString(R.string.geq_api_network_error, t.localizedMessage))
+            override fun onFailure(call: Call<Array<AeqSearchResult>>, error: Throwable) {
+                Timber.e(error, "queryProfiles failed")
+                onFailure?.invoke(networkError(error.localizedMessage))
             }
         })
     }
 
-    fun getProfile(id: Long, onResponse: ((String, AeqSearchResult) -> Unit), onFailure: ((String) -> Unit)?) {
-        val call = service.getProfile(id)
-        call.enqueue(object : Callback<String> {
+    fun getProfile(
+        id: Long,
+        onResponse: (String, AeqSearchResult) -> Unit,
+        onFailure: ((String) -> Unit)?,
+    ) {
+        service.getProfile(id).enqueue(object : Callback<String> {
             override fun onResponse(call: Call<String>, response: Response<String>) {
-                if (response.code() == 200) {
-                    val result = AeqSearchResult(
-                        response.headers().get(HEADER_PROFILE_NAME),
-                        response.headers().get(HEADER_PROFILE_SOURCE),
-                        response.headers().get(HEADER_PROFILE_RANK)?.toIntOrNull(),
-                        response.headers().get(HEADER_PROFILE_ID)?.toLongOrNull()
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null) {
+                        val result = AeqSearchResult(
+                            response.headers()[HEADER_PROFILE_NAME],
+                            response.headers()[HEADER_PROFILE_SOURCE],
+                            response.headers()[HEADER_PROFILE_RANK]?.toIntOrNull(),
+                            response.headers()[HEADER_PROFILE_ID]?.toLongOrNull(),
+                        )
+                        onResponse(body, result)
+                    } else {
+                        onFailure?.invoke(networkError("The server returned an empty profile."))
+                    }
+                } else {
+                    val details = context.getString(
+                        R.string.geq_api_network_error_details_code,
+                        response.code(),
                     )
-
-                    onResponse.invoke(response.body()!!, result)
-                }
-                else {
-                    onFailure?.invoke(context.getString(R.string.geq_api_network_error,
-                        context.getString(R.string.geq_api_network_error_details_code, response.code())
-                    ))
-                    Timber.e("getProfile: Server responded with ${response.code()} (${response.errorBody().toString()})")
+                    onFailure?.invoke(networkError(details))
+                    Timber.e(
+                        "getProfile: Server responded with %d (%s)",
+                        response.code(),
+                        response.errorBody()?.string(),
+                    )
                 }
             }
 
-            override fun onFailure(call: Call<String>, t: Throwable) {
-                Timber.e("getProfile: $t")
-                onFailure?.invoke(context.getString(R.string.geq_api_network_error, t.localizedMessage))
+            override fun onFailure(call: Call<String>, error: Throwable) {
+                Timber.e(error, "getProfile failed")
+                onFailure?.invoke(networkError(error.localizedMessage))
             }
         })
+    }
+
+    private fun networkError(details: String?): String = buildString {
+        append(context.getString(R.string.rootless_zach_autoeq_network_error))
+        if (!details.isNullOrBlank()) {
+            append(' ')
+            append(details.trim())
+        }
     }
 
     companion object {
