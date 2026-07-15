@@ -6,9 +6,7 @@ import org.junit.Test
 
 class AppIdentityValidatorTest {
     @Test
-    fun `current RootlessZachDSP debug identity is accepted`() {
-        assertEquals("com.zfkirke0109.rootlesszachdsp.debug", BuildConfig.APPLICATION_ID)
-        assertEquals("RootlessZachDSP", BuildConfig.EXPECTED_APP_NAME)
+    fun `generated variant identity is accepted`() {
         assertEquals(
             0,
             check(
@@ -47,7 +45,7 @@ class AppIdentityValidatorTest {
             AppIdentityValidator.check(
                 actualPackageName = "com.zfkirke0109.rootlesszachdsp.debug",
                 actualAppName = "RootlessZachDSP",
-                expectedPackageName = "com.zfkirke0109.rootlesszachdsp.debug",
+                expectedPackageName = "com.zfkirke0109.rootlesszachdsp",
                 expectedAppName = "RootlessZachDSP",
                 isPlugin = false,
                 isDebug = false,

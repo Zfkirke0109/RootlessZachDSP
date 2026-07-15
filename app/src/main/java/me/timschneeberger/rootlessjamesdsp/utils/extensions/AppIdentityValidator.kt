@@ -10,9 +10,9 @@ internal object AppIdentityValidator {
         isDebug: Boolean,
     ): Int {
         if (isPlugin) return 0
+        if (!isDebug && actualPackageName.endsWith(".debug")) return 3
         if (actualPackageName != expectedPackageName) return 1
         if (actualAppName != expectedAppName) return 2
-        if (!isDebug && actualPackageName.endsWith(".debug")) return 3
         return 0
     }
 }

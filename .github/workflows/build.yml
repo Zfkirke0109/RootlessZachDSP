@@ -169,7 +169,7 @@ jobs:
             "$ANDROID_NDK_PACKAGE" \
             "$ANDROID_CMAKE_PACKAGE"
 
-      - name: Materialize release keystore
+      - name: Build signed privacy-first release APKs
         shell: bash
         env:
           GH_RELEASE_KEYSTORE_BASE64: ${{ secrets.GH_RELEASE_KEYSTORE_BASE64 }}
@@ -186,18 +186,12 @@ jobs:
           done
 
           keystore_path="$RUNNER_TEMP/rootless-zach-dsp-release.p12"
+          trap 'rm -f "$keystore_path"' EXIT
           printf '%s' "$GH_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
           chmod 600 "$keystore_path"
 
-          {
-            echo "GH_RELEASE_KEYSTORE_PATH=$keystore_path"
-            echo "GH_RELEASE_STORE_PASSWORD=$GH_RELEASE_STORE_PASSWORD"
-            echo "GH_RELEASE_KEY_ALIAS=$GH_RELEASE_KEY_ALIAS"
-            echo "GH_RELEASE_KEY_PASSWORD=$GH_RELEASE_KEY_PASSWORD"
-          } >> "$GITHUB_ENV"
-
-      - name: Build signed privacy-first release APKs
-        run: ./gradlew --stacktrace assembleRootlessFdroidRelease
+          GH_RELEASE_KEYSTORE_PATH="$keystore_path" \
+            ./gradlew --stacktrace assembleRootlessFdroidRelease
 
       - name: Verify signatures, identity, 16 KiB alignment, and checksums
         shell: bash
