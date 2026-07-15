@@ -9,10 +9,16 @@ plugins {
 
 android {
     val supportedAbis = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-    val releaseStorePath = providers.environmentVariable("ZACHDSP_KEYSTORE_PATH").orNull
-    val releaseStorePassword = providers.environmentVariable("ZACHDSP_KEYSTORE_PASSWORD").orNull
-    val releaseKeyAlias = providers.environmentVariable("ZACHDSP_KEY_ALIAS").orNull
-    val releaseKeyPassword = providers.environmentVariable("ZACHDSP_KEY_PASSWORD").orNull
+    val rootlessApplicationId = "com.zfkirke0109.rootlesszachdsp"
+    val rootlessAppLabel = "RootlessZachDSP"
+    val rootApplicationId = "com.zfkirke0109.zachdsp.root"
+    val rootAppLabel = "ZachDSP (Root)"
+    val pluginApplicationId = "com.zfkirke0109.zachdsp.plugin"
+    val pluginAppLabel = "ZachDSP Plugin"
+    val releaseStorePath = providers.environmentVariable("GH_RELEASE_KEYSTORE_PATH").orNull
+    val releaseStorePassword = providers.environmentVariable("GH_RELEASE_STORE_PASSWORD").orNull
+    val releaseKeyAlias = providers.environmentVariable("GH_RELEASE_KEY_ALIAS").orNull
+    val releaseKeyPassword = providers.environmentVariable("GH_RELEASE_KEY_PASSWORD").orNull
     val hasReleaseSigning = listOf(
         releaseStorePath,
         releaseStorePassword,
@@ -28,7 +34,7 @@ android {
         targetSdk = AndroidConfig.targetSdk
         versionCode = AndroidConfig.versionCode
         versionName = AndroidConfig.versionName
-        manifestPlaceholders["label"] = "RootlessZachDSP"
+        manifestPlaceholders["label"] = rootlessAppLabel
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
@@ -107,28 +113,31 @@ android {
 
         create("rootless") {
             dimension = "version"
-            manifestPlaceholders["label"] = "RootlessZachDSP"
-            applicationId = "com.zfkirke0109.rootlesszachdsp"
+            manifestPlaceholders["label"] = rootlessAppLabel
+            applicationId = rootlessApplicationId
             AndroidConfig.minSdk = 29
             minSdk = AndroidConfig.minSdk
+            buildConfigField("String", "EXPECTED_APP_NAME", "\"$rootlessAppLabel\"")
             buildConfigField("boolean", "ROOTLESS", "true")
             buildConfigField("boolean", "PLUGIN", "false")
         }
         create("root") {
             dimension = "version"
-            manifestPlaceholders["label"] = "ZachDSP (Root)"
-            applicationId = "com.zfkirke0109.zachdsp.root"
+            manifestPlaceholders["label"] = rootAppLabel
+            applicationId = rootApplicationId
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk
+            buildConfigField("String", "EXPECTED_APP_NAME", "\"$rootAppLabel\"")
             buildConfigField("boolean", "ROOTLESS", "false")
             buildConfigField("boolean", "PLUGIN", "false")
         }
         create("plugin") {
             dimension = "version"
-            applicationId = "com.zfkirke0109.zachdsp.plugin"
-            manifestPlaceholders["label"] = "ZachDSP Plugin"
+            applicationId = pluginApplicationId
+            manifestPlaceholders["label"] = pluginAppLabel
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk
+            buildConfigField("String", "EXPECTED_APP_NAME", "\"$pluginAppLabel\"")
             buildConfigField("boolean", "ROOTLESS", "false")
             buildConfigField("boolean", "PLUGIN", "true")
         }

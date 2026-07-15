@@ -134,7 +134,7 @@ jobs:
 
   signed-release:
     name: Build, verify, and publish signed release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: test-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -172,21 +172,31 @@ jobs:
       - name: Materialize release keystore
         shell: bash
         env:
-          ZACHDSP_KEYSTORE_BASE64: ${{ secrets.ZACHDSP_KEYSTORE_BASE64 }}
+          GH_RELEASE_KEYSTORE_BASE64: ${{ secrets.GH_RELEASE_KEYSTORE_BASE64 }}
+          GH_RELEASE_STORE_PASSWORD: ${{ secrets.GH_RELEASE_STORE_PASSWORD }}
+          GH_RELEASE_KEY_ALIAS: ${{ secrets.GH_RELEASE_KEY_ALIAS }}
+          GH_RELEASE_KEY_PASSWORD: ${{ secrets.GH_RELEASE_KEY_PASSWORD }}
         run: |
-          test -n "$ZACHDSP_KEYSTORE_BASE64" || {
-            echo "Missing ZACHDSP_KEYSTORE_BASE64 repository secret" >&2
-            exit 1
-          }
-          printf '%s' "$ZACHDSP_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/rootless-zach-dsp.jks"
-          chmod 600 "$RUNNER_TEMP/rootless-zach-dsp.jks"
+          set -euo pipefail
+          for secret in GH_RELEASE_KEYSTORE_BASE64 GH_RELEASE_STORE_PASSWORD GH_RELEASE_KEY_ALIAS GH_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Required secret $secret is not configured."
+              exit 1
+            fi
+          done
+
+          keystore_path="$RUNNER_TEMP/rootless-zach-dsp-release.p12"
+          printf '%s' "$GH_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+
+          {
+            echo "GH_RELEASE_KEYSTORE_PATH=$keystore_path"
+            echo "GH_RELEASE_STORE_PASSWORD=$GH_RELEASE_STORE_PASSWORD"
+            echo "GH_RELEASE_KEY_ALIAS=$GH_RELEASE_KEY_ALIAS"
+            echo "GH_RELEASE_KEY_PASSWORD=$GH_RELEASE_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
 
       - name: Build signed privacy-first release APKs
-        env:
-          ZACHDSP_KEYSTORE_PATH: ${{ runner.temp }}/rootless-zach-dsp.jks
-          ZACHDSP_KEYSTORE_PASSWORD: ${{ secrets.ZACHDSP_KEYSTORE_PASSWORD }}
-          ZACHDSP_KEY_ALIAS: ${{ secrets.ZACHDSP_KEY_ALIAS }}
-          ZACHDSP_KEY_PASSWORD: ${{ secrets.ZACHDSP_KEY_PASSWORD }}
         run: ./gradlew --stacktrace assembleRootlessFdroidRelease
 
       - name: Verify signatures, identity, 16 KiB alignment, and checksums
@@ -216,6 +226,7 @@ jobs:
             app/build/outputs/apk/rootlessFdroid/release/SHA256SUMS.txt
 
       - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: RootlessZachDSP ${{ github.ref_name }}

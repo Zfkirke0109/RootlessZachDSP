@@ -61,7 +61,7 @@ git submodule update --init --recursive
 ./gradlew assembleRootlessFdroidDebug
 ```
 
-Release signing is configured only when `ZACHDSP_KEYSTORE_PATH`, `ZACHDSP_KEYSTORE_PASSWORD`, `ZACHDSP_KEY_ALIAS`, and `ZACHDSP_KEY_PASSWORD` are supplied. The keystore and passwords must never be committed. Tagged releases verify the APK signature, 16 KiB ZIP alignment, and SHA-256 sums.
+Release signing is configured only when `GH_RELEASE_KEYSTORE_PATH`, `GH_RELEASE_STORE_PASSWORD`, `GH_RELEASE_KEY_ALIAS`, and `GH_RELEASE_KEY_PASSWORD` are supplied. GitHub Actions materializes the key from the encrypted `GH_RELEASE_KEYSTORE_BASE64` repository secret only for manual or tagged release builds. The keystore and passwords must never be committed. Manual runs produce verified signed artifacts; only `v*` tags publish a GitHub Release. Both paths verify the APK signature, 16 KiB ZIP alignment, and SHA-256 sums.
 
 ## Credits
 
