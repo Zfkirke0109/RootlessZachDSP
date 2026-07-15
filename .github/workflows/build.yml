@@ -67,6 +67,32 @@ jobs:
       - name: Build installable debug APKs
         run: ./gradlew --stacktrace assembleRootlessFdroidDebug
 
+      - name: Verify debug APK identity, signatures, alignment, and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/rootlessFdroid/debug"
+          VERIFY_DIR="ci-artifacts/verification"
+          mkdir -p "$VERIFY_DIR"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          test "${#APKS[@]}" -gt 0 || { echo "No debug APKs found" >&2; exit 1; }
+          : > "$VERIFY_DIR/SHA256SUMS.txt"
+          for apk in "${APKS[@]}"; do
+            name="$(basename "$apk")"
+            echo "Verifying $name"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" \
+              > "$VERIFY_DIR/${name}.apksigner.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp.debug'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            sha256sum "$apk" >> "$VERIFY_DIR/SHA256SUMS.txt"
+          done
+
       - name: Run lint and preserve report
         id: lint
         continue-on-error: true
@@ -97,6 +123,7 @@ jobs:
             app/build/outputs/apk/rootlessFdroid/debug/*.apk
             app/build/reports/tests/**
             ci-artifacts/lint/**
+            ci-artifacts/verification/**
 
       - name: Enforce lint gate
         if: steps.lint.outcome == 'failure'
@@ -162,7 +189,7 @@ jobs:
           ZACHDSP_KEY_PASSWORD: ${{ secrets.ZACHDSP_KEY_PASSWORD }}
         run: ./gradlew --stacktrace assembleRootlessFdroidRelease
 
-      - name: Verify signatures, 16 KiB alignment, and checksums
+      - name: Verify signatures, identity, 16 KiB alignment, and checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -174,6 +201,8 @@ jobs:
             echo "Verifying $apk"
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
             "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              | grep -q "package: name='com.zfkirke0109.rootlesszachdsp'"
             sha256sum "$apk" >> "$APK_DIR/SHA256SUMS.txt"
           done
 
