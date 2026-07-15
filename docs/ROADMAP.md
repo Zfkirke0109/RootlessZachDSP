@@ -13,4 +13,8 @@
 | P2 | Preset interchange, compatibility contributions | Planned |
 | P2 | Pitch/time and microphone modes | Experimental |
 
+## Build status
+
+GitHub Actions was enabled for the fork on 2026-07-15. The foundation branch now runs unit tests, strict lint, native compilation, and debug APK assembly before merge.
+
 Detailed acceptance criteria are in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
