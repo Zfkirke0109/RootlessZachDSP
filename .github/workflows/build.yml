@@ -70,7 +70,22 @@ jobs:
       - name: Run lint and preserve report
         id: lint
         continue-on-error: true
-        run: ./gradlew --stacktrace lintRootlessFdroidDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-artifacts/lint
+          ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug 2>&1 \
+            | tee ci-artifacts/lint/console.log
+
+      - name: Collect lint outputs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts/lint/files
+          find app/build -type f \
+            \( -iname '*lint*.html' -o -iname '*lint*.xml' -o -iname '*lint*.txt' -o -iname '*lint*.sarif' \) \
+            -print -exec cp --parents '{}' ci-artifacts/lint/files/ \; || true
+          find ci-artifacts/lint -type f -maxdepth 12 -print || true
 
       - name: Upload debug APKs and reports
         if: always()
@@ -81,15 +96,13 @@ jobs:
           path: |
             app/build/outputs/apk/rootlessFdroid/debug/*.apk
             app/build/reports/tests/**
-            app/build/reports/lint-results-*.html
-            app/build/reports/lint-results-*.xml
-            app/build/intermediates/lint_intermediate_text_report/**
+            ci-artifacts/lint/**
 
       - name: Enforce lint gate
         if: steps.lint.outcome == 'failure'
         shell: bash
         run: |
-          echo "Android lint reported blocking findings. Download the uploaded report for details." >&2
+          echo "Android lint reported blocking findings. See ci-artifacts/lint in the uploaded artifact." >&2
           exit 1
 
   signed-release:
