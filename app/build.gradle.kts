@@ -117,10 +117,6 @@ android {
         create("root") {
             dimension = "version"
             manifestPlaceholders["label"] = "ZachDSP (Root)"
-            project.setProperty(
-                "archivesBaseName",
-                "ZachDSP-root-v${AndroidConfig.versionName}-${AndroidConfig.versionCode}",
-            )
             applicationId = "com.zfkirke0109.zachdsp.root"
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk
@@ -167,6 +163,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         viewBinding = true
         aidl = false
         renderScript = false
