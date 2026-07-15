@@ -15,6 +15,12 @@ concurrency:
   group: rootless-zach-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+
 jobs:
   test-and-build:
     name: Test and build rootless FOSS app
@@ -37,18 +43,23 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       - name: Install Android 16 SDK, build tools, and NDK r28
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;28.2.13676358" \
-            "cmake;3.22.1"
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+          sdkmanager --list_installed
 
       - name: Run deterministic audio-transport tests
         run: ./gradlew --stacktrace testRootlessFdroidDebugUnitTest
@@ -89,18 +100,22 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       - name: Install Android release toolchain
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;28.2.13676358" \
-            "cmake;3.22.1"
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
 
       - name: Materialize release keystore
         shell: bash
