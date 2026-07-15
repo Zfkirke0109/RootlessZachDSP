@@ -3,4 +3,16 @@
     <string name="rootless_zach_app_name">RootlessZachDSP</string>
     <string name="rootless_zach_upstream_credit">Independent fork of RootlessJamesDSP by Tim Schneeberger / ThePBone. DSP engine by James Fung.</string>
     <string name="rootless_zach_privacy_summary">Compatibility reports are generated locally and are never uploaded automatically.</string>
+    <string name="rootless_zach_project_page">RootlessZachDSP project</string>
+    <string name="rootless_zach_project_page_summary">Source code, releases, issues, and roadmap</string>
+    <string name="rootless_zach_upstream_project">Original RootlessJamesDSP project</string>
+    <string name="rootless_zach_upstream_project_summary">Created and maintained by Tim Schneeberger / ThePBone</string>
+    <string name="rootless_zach_credit_upstream_title">Original app and rootless architecture</string>
+    <string name="rootless_zach_credit_upstream_summary">Tim Schneeberger / ThePBone (@timschneeb)</string>
+    <string name="rootless_zach_credit_dsp_title">JamesDSP and libjamesdsp engine</string>
+    <string name="rootless_zach_credit_dsp_summary">James Fung (@james34602)</string>
+    <string name="rootless_zach_credit_fork_title">RootlessZachDSP fork direction</string>
+    <string name="rootless_zach_credit_fork_summary">Zach Kirke (@Zfkirke0109)</string>
+    <string name="rootless_zach_license_title">Open-source license</string>
+    <string name="rootless_zach_license_summary">GNU General Public License v3.0; upstream notices and history preserved</string>
 </resources>
