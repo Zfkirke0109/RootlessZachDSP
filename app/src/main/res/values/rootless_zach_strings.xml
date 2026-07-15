@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rootless_zach_app_name">RootlessZachDSP</string>
+    <string name="rootless_zach_upstream_credit">Independent fork of RootlessJamesDSP by Tim Schneeberger / ThePBone. DSP engine by James Fung.</string>
+    <string name="rootless_zach_privacy_summary">Compatibility reports are generated locally and are never uploaded automatically.</string>
+</resources>
