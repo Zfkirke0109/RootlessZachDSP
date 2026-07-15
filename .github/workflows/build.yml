@@ -64,13 +64,16 @@ jobs:
       - name: Run deterministic audio-transport tests
         run: ./gradlew --stacktrace testRootlessFdroidDebugUnitTest
 
-      - name: Run lint
-        run: ./gradlew --stacktrace lintRootlessFdroidDebug
-
       - name: Build installable debug APKs
         run: ./gradlew --stacktrace assembleRootlessFdroidDebug
 
+      - name: Run lint and preserve report
+        id: lint
+        continue-on-error: true
+        run: ./gradlew --stacktrace lintRootlessFdroidDebug
+
       - name: Upload debug APKs and reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RootlessZachDSP-debug-${{ github.sha }}
@@ -79,6 +82,15 @@ jobs:
             app/build/outputs/apk/rootlessFdroid/debug/*.apk
             app/build/reports/tests/**
             app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+            app/build/intermediates/lint_intermediate_text_report/**
+
+      - name: Enforce lint gate
+        if: steps.lint.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Android lint reported blocking findings. Download the uploaded report for details." >&2
+          exit 1
 
   signed-release:
     name: Build, verify, and publish signed release
