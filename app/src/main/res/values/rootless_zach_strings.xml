@@ -15,4 +15,7 @@
     <string name="rootless_zach_credit_fork_summary">Zach Kirke (@Zfkirke0109)</string>
     <string name="rootless_zach_license_title">Open-source license</string>
     <string name="rootless_zach_license_summary">GNU General Public License v3.0; upstream notices and history preserved</string>
+
+    <!-- Fork-owned strings stay untranslated until the new localization workflow is established. -->
+    <string name="rootless_zach_autoeq_network_error" translatable="false">Failed to connect to the AutoEQ server.</string>
 </resources>
