@@ -8,7 +8,12 @@ import timber.log.Timber
 /** Persistent playback-capture allow/exclude policy using stable package names. */
 class CapturePolicyStore(context: Context) {
     enum class Mode { EXCLUDE_SELECTED, ALLOW_SELECTED }
-    data class Policy(val mode: Mode, val packageNames: Set<String>, val rawUids: Set<Int>)
+
+    data class Policy(
+        val mode: Mode,
+        val packageNames: Set<String>,
+        val rawUids: Set<Int>,
+    )
 
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -18,17 +23,28 @@ class CapturePolicyStore(context: Context) {
             Mode.valueOf(preferences.getString(KEY_MODE, Mode.EXCLUDE_SELECTED.name)!!)
         }.getOrDefault(Mode.EXCLUDE_SELECTED)
         val packages = preferences.getStringSet(KEY_PACKAGES, emptySet()).orEmpty()
-            .map(String::trim).filter(String::isNotBlank).toSet()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
         val uids = preferences.getStringSet(KEY_UIDS, emptySet()).orEmpty()
-            .mapNotNull(String::toIntOrNull).filter { it >= 0 }.toSet()
+            .mapNotNull { it.toIntOrNull() }
+            .filter { it >= 0 }
+            .toSet()
         return Policy(mode, packages, uids)
     }
 
     fun setMode(mode: Mode) = preferences.edit().putString(KEY_MODE, mode.name).apply()
+
     fun setPackages(packages: Set<String>) = preferences.edit()
-        .putStringSet(KEY_PACKAGES, packages.map(String::trim).filter(String::isNotBlank).toSet()).apply()
+        .putStringSet(
+            KEY_PACKAGES,
+            packages.map { it.trim() }.filter { it.isNotBlank() }.toSet(),
+        )
+        .apply()
+
     fun setRawUids(uids: Set<Int>) = preferences.edit()
-        .putStringSet(KEY_UIDS, uids.filter { it >= 0 }.map(Int::toString).toSet()).apply()
+        .putStringSet(KEY_UIDS, uids.filter { it >= 0 }.map { it.toString() }.toSet())
+        .apply()
 
     fun resolveUids(policy: Policy = read()): Set<Int> {
         val packageUids = policy.packageNames.mapNotNull { packageName ->
@@ -47,6 +63,7 @@ class CapturePolicyStore(context: Context) {
 
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         preferences.registerOnSharedPreferenceChangeListener(listener)
+
     fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         preferences.unregisterOnSharedPreferenceChangeListener(listener)
 
