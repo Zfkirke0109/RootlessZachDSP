@@ -167,11 +167,24 @@ object ContextExtensions {
         }
     }
 
-    // Very simple & naive app cloner checks; please don't use multiple instances at once
-    private val PKGNAME_REFS = setOf("bWUudGltc2NobmVlYmVyZ2VyLnJvb3RsZXNzamFtZXNkc3A=",
+    // Very simple & naive app cloner checks; please don't use multiple instances at once.
+    // Preserve the upstream identities and explicitly authorize RootlessZachDSP release/debug variants.
+    private val PKGNAME_REFS = setOf(
+        "bWUudGltc2NobmVlYmVyZ2VyLnJvb3RsZXNzamFtZXNkc3A=",
         "bWUudGltc2NobmVlYmVyZ2VyLnJvb3RsZXNzamFtZXNkc3AuZGVidWc=",
-        "amFtZXMuZHNw", "amFtZXMuZHNwLmRlYnVn")
-    private val APPNAME_REFS = setOf("Um9vdGxlc3NKYW1lc0RTUA==", "SmFtZXNEU1A=")
+        "amFtZXMuZHNw",
+        "amFtZXMuZHNwLmRlYnVn",
+        "Y29tLnpma2lya2UwMTA5LnJvb3RsZXNzemFjaGRzcA==",
+        "Y29tLnpma2lya2UwMTA5LnJvb3RsZXNzemFjaGRzcC5kZWJ1Zw==",
+        "Y29tLnpma2lya2UwMTA5LnphY2hkc3Aucm9vdA==",
+        "Y29tLnpma2lya2UwMTA5LnphY2hkc3Aucm9vdC5kZWJ1Zw==",
+    )
+    private val APPNAME_REFS = setOf(
+        "Um9vdGxlc3NKYW1lc0RTUA==",
+        "SmFtZXNEU1A=",
+        "Um9vdGxlc3NaYWNoRFNQ",
+        "WmFjaERTUCAoUm9vdCk=",
+    )
     fun Context.check(): Int {
         val appName = getAppName()
         if(isPlugin()) return 0
