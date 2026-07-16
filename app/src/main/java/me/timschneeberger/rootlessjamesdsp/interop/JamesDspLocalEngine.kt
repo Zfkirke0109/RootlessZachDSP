@@ -16,7 +16,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     var handle: JamesDspHandle = JamesDspWrapper.alloc(callbacks ?: DummyCallbacks())
 
     private val signalTelemetry = if (BuildConfig.ROOTLESS) {
-        AudioSignalTelemetry(hashSeed = System.nanoTime() xor handle)
+        AudioSignalTelemetry(
+            hashSeed = System.nanoTime() xor handle,
+            hashStride = LIVE_SIGNAL_HASH_STRIDE,
+        )
     } else {
         null
     }
@@ -253,5 +256,6 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
 
     companion object {
         private const val SIGNAL_PUBLISH_INTERVAL_NANOS = 1_000_000_000L
+        private const val LIVE_SIGNAL_HASH_STRIDE = 16
     }
 }
