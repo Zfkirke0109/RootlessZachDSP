@@ -90,6 +90,7 @@ internal object AudioDiagnosticJson {
         decimal("changedSampleRatio", snapshot.changedSampleRatio)
         string("inputHash", java.lang.Long.toUnsignedString(snapshot.inputHash, 16))
         string("outputHash", java.lang.Long.toUnsignedString(snapshot.outputHash, 16))
+        number("hashStride", snapshot.hashStride)
         boolean("outputChanged", snapshot.outputChanged)
         endObject()
     }
