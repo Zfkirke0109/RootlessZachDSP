@@ -2,6 +2,8 @@ package me.timschneeberger.rootlessjamesdsp.audio.transport
 
 import java.util.Locale
 
+private const val RECOVERY_REASON_LOG_WINDOW_MS = 10_000L
+
 /** Consistent snapshots of the capture -> DSP -> output transport. */
 class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoTime) {
     data class Snapshot(
@@ -23,6 +25,7 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         val maxProcessingNanos: Long,
         val processingLoadEwma: Double,
         val lastRecoveryReason: String?,
+        val lastRecoveryAtNanos: Long?,
         val lastErrorCode: Int?,
     ) {
         fun compactString() = buildString {
@@ -42,7 +45,13 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
             append(" processNs=").append(lastProcessingNanos)
             append(" maxProcessNs=").append(maxProcessingNanos)
             append(" loadEwma=").append(String.format(Locale.US, "%.3f", processingLoadEwma))
-            lastRecoveryReason?.let { append(" recoveryReason=").append(it) }
+            lastRecoveryAtNanos?.let { recoveryAt ->
+                val recoveryAgeMs = ((capturedAtNanos - recoveryAt).coerceAtLeast(0L) / 1_000_000L)
+                append(" recoveryAgeMs=").append(recoveryAgeMs)
+                if (recoveryAgeMs <= RECOVERY_REASON_LOG_WINDOW_MS) {
+                    lastRecoveryReason?.let { append(" recoveryReason=").append(it) }
+                }
+            }
             lastErrorCode?.let { append(" lastError=").append(it) }
         }
     }
@@ -64,6 +73,7 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     private var maxProcessingNanos = 0L
     private var processingLoadEwma = 0.0
     private var lastRecoveryReason: String? = null
+    private var lastRecoveryAtNanos: Long? = null
     private var lastErrorCode: Int? = null
 
     @Synchronized fun configure(rate: Int, channels: Int, samples: Int) {
@@ -102,13 +112,17 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     @Synchronized fun recordRecovery(reason: String) {
         recoveryCount++
         lastRecoveryReason = reason
+        lastRecoveryAtNanos = clockNanos()
     }
 
-    @Synchronized fun snapshot() = Snapshot(
-        clockNanos(), sampleRate, channelCount, bufferSamples,
-        totalReadSamples, totalWrittenSamples, partialReadOperations, partialWriteOperations,
-        zeroProgressOperations, ioErrorCount, recoveryCount, underrunCount,
-        deadlineMissCount, bypassBufferCount, lastProcessingNanos, maxProcessingNanos,
-        processingLoadEwma, lastRecoveryReason, lastErrorCode,
-    )
+    @Synchronized fun snapshot(): Snapshot {
+        val now = clockNanos()
+        return Snapshot(
+            now, sampleRate, channelCount, bufferSamples,
+            totalReadSamples, totalWrittenSamples, partialReadOperations, partialWriteOperations,
+            zeroProgressOperations, ioErrorCount, recoveryCount, underrunCount,
+            deadlineMissCount, bypassBufferCount, lastProcessingNanos, maxProcessingNanos,
+            processingLoadEwma, lastRecoveryReason, lastRecoveryAtNanos, lastErrorCode,
+        )
+    }
 }
