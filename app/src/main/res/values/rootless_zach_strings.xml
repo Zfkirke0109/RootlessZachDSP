@@ -42,6 +42,8 @@
     <string name="rootless_zach_diagnostics_share">Share redacted bundle</string>
     <string name="rootless_zach_diagnostics_share_title">Share RootlessZachDSP diagnostics</string>
     <string name="rootless_zach_diagnostics_preview_header">Redacted compatibility report and recent technical event records. No raw PCM is stored.</string>
+    <string name="rootless_zach_diagnostics_export_blocked_title">Export blocked by privacy check</string>
+    <string name="rootless_zach_diagnostics_export_blocked">The bundle still contains %1$d potentially sensitive item(s). Clear or sanitize the flagged diagnostic data before sharing.</string>
 
     <!-- Fork-owned strings stay untranslated until the new localization workflow is established. -->
     <string name="rootless_zach_autoeq_network_error" translatable="false">Failed to connect to the AutoEQ server.</string>
