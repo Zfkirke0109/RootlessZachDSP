@@ -1,5 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.diagnostics
 
+import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransferResult
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 import org.junit.Assert.assertFalse
@@ -34,6 +35,35 @@ class AudioDiagnosticJsonTest {
         assertTrue(json.contains("\"droppedEventCount\":2"))
         assertFalse(json.contains('\n'))
         assertFalse(json.contains('\r'))
+    }
+
+    @Test
+    fun `signal snapshot contains aggregates but no pcm or path fields`() {
+        var now = 77L
+        val telemetry = AudioSignalTelemetry(hashSeed = 123L, clockNanos = { now })
+        telemetry.recordFloat(
+            floatArrayOf(0f, 0.25f, -0.25f),
+            floatArrayOf(0f, 0.5f, -0.5f),
+            3,
+        )
+
+        val json = AudioDiagnosticJson.signalSnapshot(
+            snapshot = telemetry.snapshot(),
+            build = DiagnosticBuildIdentity("app", "version", 1, "commit"),
+            engineEpoch = "epoch",
+            wallClockEpochMs = 1234,
+        )
+
+        assertTrue(json.contains("\"eventType\":\"SIGNAL_SNAPSHOT\""))
+        assertTrue(json.contains("\"capturedAtNanos\":77"))
+        assertTrue(json.contains("\"sampleCount\":3"))
+        assertTrue(json.contains("\"outputChanged\":true"))
+        assertTrue(json.contains("\"changedSamples\":2"))
+        assertTrue(json.contains("\"inputHash\":\""))
+        assertTrue(json.contains("\"outputHash\":\""))
+        assertFalse(json.contains("pcm", ignoreCase = true))
+        assertFalse(json.contains("path", ignoreCase = true))
+        assertFalse(json.contains("uri", ignoreCase = true))
     }
 
     @Test
