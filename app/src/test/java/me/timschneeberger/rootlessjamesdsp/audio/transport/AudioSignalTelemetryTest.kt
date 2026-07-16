@@ -24,6 +24,7 @@ class AudioSignalTelemetryTest {
         assertEquals(1L, snapshot.inputSilenceRatio.times(snapshot.sampleCount).toLong())
         assertEquals(1L, snapshot.inputClippedSamples)
         assertEquals(0L, snapshot.changedSamples)
+        assertEquals(1, snapshot.hashStride)
         assertFalse(snapshot.outputChanged)
     }
 
@@ -43,6 +44,30 @@ class AudioSignalTelemetryTest {
         assertEquals(1.1, snapshot.outputPeak, 1.0e-6)
         assertEquals(1L, snapshot.outputClippedSamples)
         assertNotEquals(snapshot.inputHash, snapshot.outputHash)
+    }
+
+    @Test
+    fun `decimated hashes preserve full metrics and changed sample detection`() {
+        val telemetry = AudioSignalTelemetry(hashSeed = 45L, hashStride = 4)
+        val input = floatArrayOf(0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f)
+        val output = input.copyOf().apply { this[3] = 0.9f }
+
+        telemetry.recordFloat(input, output, input.size)
+        val snapshot = telemetry.snapshot()
+
+        assertEquals(8L, snapshot.sampleCount)
+        assertEquals(4, snapshot.hashStride)
+        assertEquals(1L, snapshot.changedSamples)
+        assertTrue(snapshot.outputChanged)
+        assertEquals(0.7, snapshot.inputPeak, 1.0e-6)
+        assertEquals(0.9, snapshot.outputPeak, 1.0e-6)
+    }
+
+    @Test
+    fun `hash stride must be positive`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AudioSignalTelemetry(hashSeed = 1L, hashStride = 0)
+        }
     }
 
     @Test
