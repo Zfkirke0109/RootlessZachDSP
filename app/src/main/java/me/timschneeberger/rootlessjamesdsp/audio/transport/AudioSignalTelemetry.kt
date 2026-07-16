@@ -7,7 +7,8 @@ import kotlin.math.sqrt
  * Allocation-free pre/post signal accumulator for the rootless audio loop.
  *
  * The accumulator stores only aggregate counters and session-salted rolling hashes. It never keeps
- * PCM samples. Call [snapshot] from a non-real-time thread or at an existing telemetry boundary.
+ * PCM samples. Recording takes one monitor acquisition per audio buffer, not per sample. Call
+ * [snapshot] from a non-real-time thread or at an existing telemetry boundary.
  */
 class AudioSignalTelemetry(
     private val hashSeed: Long,
@@ -57,6 +58,7 @@ class AudioSignalTelemetry(
         require(clippingThreshold > 0.0) { "clippingThreshold must be positive" }
     }
 
+    @Synchronized
     fun recordFloat(input: FloatArray, output: FloatArray, samples: Int) {
         require(samples >= 0 && samples <= input.size && samples <= output.size)
         for (index in 0 until samples) {
@@ -64,6 +66,7 @@ class AudioSignalTelemetry(
         }
     }
 
+    @Synchronized
     fun recordShort(input: ShortArray, output: ShortArray, samples: Int) {
         require(samples >= 0 && samples <= input.size && samples <= output.size)
         for (index in 0 until samples) {
@@ -140,7 +143,6 @@ class AudioSignalTelemetry(
         outputHash = FNV_OFFSET_BASIS xor newHashSeed
     }
 
-    @Synchronized
     private fun recordNormalized(input: Double, output: Double) {
         val safeInput = input.takeIf { it.isFinite() } ?: 0.0
         val safeOutput = output.takeIf { it.isFinite() } ?: 0.0
