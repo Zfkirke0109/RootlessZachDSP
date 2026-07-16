@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Thử lại</string>
     <string name="app_compat_exclude">Loại trừ</string>
     <string name="app_compat_title">Quá trình xử lý âm thanh đã bị tạm dừng để tránh âm thanh trùng lặp</string>
-    <string name="app_compat_explanation">Ứng dụng sau không được hỗ trợ vì nó khiến RootlessJamesDSP mất quyền kiểm soát định tuyến âm thanh của nó:</string>
-    <string name="app_compat_instruction">Hãy kiểm tra cài đặt của ứng dụng nếu bạn có thể tắt tính năng tăng tốc phần cứng hoặc các cài đặt khác có thể ảnh hưởng đến RootlessJamesDSP và nhấn \'Thử lại\'.</string>
+    <string name="app_compat_explanation">Ứng dụng sau không được hỗ trợ vì nó khiến RootlessZachDSP mất quyền kiểm soát định tuyến âm thanh của nó:</string>
+    <string name="app_compat_instruction">Hãy kiểm tra cài đặt của ứng dụng nếu bạn có thể tắt tính năng tăng tốc phần cứng hoặc các cài đặt khác có thể ảnh hưởng đến RootlessZachDSP và nhấn \'Thử lại\'.</string>
     <string name="app_compat_instruction_exclude">Lựa chọn ‘Loại trừ’ để vượt qua vấn đề này bằng cách loại trừ ứng dụng không tương thích khỏi quá trình xử lý âm thanh.</string>
     <string name="app_compat_unknown_pkg_name">Tên gói không xác định</string>
     <!-- Root: Library load failure -->

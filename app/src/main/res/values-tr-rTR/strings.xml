@@ -155,7 +155,7 @@
     <string name="onboarding_back">Geri</string>
     <string name="onboarding_next">İleri</string>
     <string name="onboarding_finish">Bitir</string>
-    <string name="onboarding_greeting">RootlessJamesDSP\'ye hoşgeldiniz!</string>
+    <string name="onboarding_greeting">RootlessZachDSP\'ye hoşgeldiniz!</string>
     <string name="onboarding_caption">Asistan bu uygulamayı ayarlamanıza yardımcı olacaktır.</string>
     <string name="onboarding_warning">Şimdilik bu uygulama bitirilmemiştir ve stabil değildir. Lütfen bilin ki üçüncü partiler için yapılmayan Android API\'ları kullanıldığı için bazı cihazlarda çalışmayabilir.</string>
     <string name="onboarding_fix_permissions_title">Kullanıcı eylemi gerekli</string>
@@ -490,7 +490,7 @@
     <string name="app_compat_retry">Yeniden dene</string>
     <string name="app_compat_exclude">Hariç tutulan</string>
     <string name="app_compat_title">Yinelenen sesi önlemek için ses işleme askıya alındı</string>
-    <string name="app_compat_explanation">Aşağıdaki uygulama, RootlessJamesDSP\'nin ses yönlendirmesi üzerindeki kontrolünü kaybetmesine neden olduğu için desteklenmiyor:</string>
+    <string name="app_compat_explanation">Aşağıdaki uygulama, RootlessZachDSP\'nin ses yönlendirmesi üzerindeki kontrolünü kaybetmesine neden olduğu için desteklenmiyor:</string>
     <string name="app_compat_instruction">Donanım hızlandırmayı veya Rootless JamesDSP ile çakışabilecek diğer ayarları devre dışı bırakabiliyorsanız lütfen uygulamanın ayarlarını kontrol edin ve \'Yeniden Dene\'ye dokunun.</string>
     <string name="app_compat_instruction_exclude">Alternatif olarak, uyumsuz uygulamayı ses işlemenin dışında tutarak bu sorunu atlamak için \'Hariç Tut\'u seçin.</string>
     <string name="app_compat_unknown_pkg_name">Bilinmeyen paket adı</string>

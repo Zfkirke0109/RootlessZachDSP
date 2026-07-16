@@ -166,7 +166,7 @@
     <string name="onboarding_back">上一步</string>
     <string name="onboarding_next">下一步</string>
     <string name="onboarding_finish">完成</string>
-    <string name="onboarding_greeting">欢迎使用 RootlessJamesDSP！</string>
+    <string name="onboarding_greeting">欢迎使用 RootlessZachDSP！</string>
     <string name="onboarding_caption">该向导将帮助您设置此应用程序。</string>
     <string name="onboarding_warning">目前，该应用程序尚未完成且不稳定。 请注意，它可能无法按预期在某些设备上运行，因为它使用的 Android API 并非专为第三方使用而设计。</string>
     <string name="onboarding_fix_permissions_title">需要手动操作</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">重试</string>
     <string name="app_compat_exclude">排除</string>
     <string name="app_compat_title">音频处理已暂停，以防止重复音频</string>
-    <string name="app_compat_explanation">以下应用程序不受支持，因为它会导致 RootlessJamesDSP 失去对其音频路由的控制：</string>
-    <string name="app_compat_instruction">请检查应用程序的设置是否可以禁用硬件加速或其他可能干扰 RootlessJamesDSP 的设置，然后点击“重试”。</string>
+    <string name="app_compat_explanation">以下应用程序不受支持，因为它会导致 RootlessZachDSP 失去对其音频路由的控制：</string>
+    <string name="app_compat_instruction">请检查应用程序的设置是否可以禁用硬件加速或其他可能干扰 RootlessZachDSP 的设置，然后点击“重试”。</string>
     <string name="app_compat_instruction_exclude">或者，选择“排除”通过从音频处理中排除不兼容的应用程序来绕过此问题。</string>
     <string name="app_compat_unknown_pkg_name">未知的包名</string>
     <!-- Root: Library load failure -->
