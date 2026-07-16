@@ -14,12 +14,17 @@ import java.util.Locale
 
 /** Builds a local, copy-friendly, redacted compatibility report. */
 object CompatibilityDiagnosticsReport {
-    fun build(context: Context, includeSelectedPackageNames: Boolean = false): String {
+    fun build(
+        context: Context,
+        includeSelectedPackageNames: Boolean = false,
+        includeOutputDeviceNames: Boolean = false,
+    ): String {
         val app = context.applicationContext
         val audioManager = app.getSystemService(AudioManager::class.java)
         val store = CapturePolicyStore(app)
         val policy = store.read()
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
+        val signal = RootlessZachDiagnostics.latestSignalSnapshot()
         val diagnosticsFile = RootlessZachDiagnostics.latestDiagnosticsFile()
         val recentStructuredEvents = RootlessZachDiagnostics.readRecentLines(200)
         val packageInfo = runCatching { app.packageManager.getPackageInfo(app.packageName, 0) }.getOrNull()
@@ -56,18 +61,41 @@ object CompatibilityDiagnosticsReport {
             if (includeSelectedPackageNames) {
                 appendLine("selectedPackages=${policy.packageNames.sorted().joinToString(",")}")
                 appendLine("selectedRawUids=${policy.rawUids.sorted().joinToString(",")}")
-            } else appendLine("selectedPackages=<redacted>")
+            } else {
+                appendLine("selectedPackages=<redacted>")
+                appendLine("selectedRawUids=<redacted>")
+            }
             appendLine()
             appendLine("[Audio platform]")
             appendLine("outputSampleRate=${audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE).orEmpty()}")
             appendLine("framesPerBuffer=${audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER).orEmpty()}")
             audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.sortedBy { it.type }
                 ?.forEachIndexed { index, device ->
-                    appendLine("outputDevice[$index]=type:${device.type},name:${device.productName},sampleRates:${device.sampleRates.joinToString("/")},channels:${device.channelCounts.joinToString("/")}")
+                    val name = if (includeOutputDeviceNames) device.productName else "<redacted>"
+                    appendLine(
+                        "outputDevice[$index]=type:${device.type},name:$name," +
+                            "sampleRates:${device.sampleRates.joinToString("/")}," +
+                            "channels:${device.channelCounts.joinToString("/")}",
+                    )
                 }
             appendLine()
             appendLine("[Rootless transport]")
             appendLine(transport?.compactString() ?: "state=no-telemetry-yet")
+            appendLine()
+            appendLine("[Pre/post signal]")
+            if (signal == null) {
+                appendLine("state=no-signal-telemetry-yet")
+            } else {
+                appendLine("sampleCount=${signal.sampleCount}")
+                appendLine("inputRms=${signal.inputRms}")
+                appendLine("outputRms=${signal.outputRms}")
+                appendLine("inputPeak=${signal.inputPeak}")
+                appendLine("outputPeak=${signal.outputPeak}")
+                appendLine("inputClippedSamples=${signal.inputClippedSamples}")
+                appendLine("outputClippedSamples=${signal.outputClippedSamples}")
+                appendLine("changedSampleRatio=${signal.changedSampleRatio}")
+                appendLine("outputChanged=${signal.outputChanged}")
+            }
             appendLine()
             appendLine("[Structured diagnostics]")
             appendLine("schemaVersion=${AudioDiagnosticJson.SCHEMA_VERSION}")
@@ -78,6 +106,7 @@ object CompatibilityDiagnosticsReport {
             appendLine()
             appendLine("[Privacy]")
             appendLine("This report is generated locally and is not uploaded automatically.")
+            appendLine("Output-device names and selected package identities are redacted by default.")
             appendLine("Structured diagnostics contain technical counters only; raw PCM is never stored.")
             appendLine("locale=${Locale.getDefault().toLanguageTag()}")
         }
