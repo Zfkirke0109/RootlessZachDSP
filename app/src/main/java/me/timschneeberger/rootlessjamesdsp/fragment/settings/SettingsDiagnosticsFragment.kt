@@ -66,13 +66,14 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
                 buildString {
                     append(transport.compactString())
                     if (signal != null) {
-                        append("\nprePostSamples=").append(signal.sampleCount)
-                        append(" outputChanged=").append(signal.outputChanged)
+                        append("\ndspEngineSamples=").append(signal.sampleCount)
+                        append(" dspEngineOutputChanged=").append(signal.outputChanged)
                         append(" changedRatio=").append(signal.changedSampleRatio)
-                        append(" inputRms=").append(signal.inputRms)
-                        append(" outputRms=").append(signal.outputRms)
+                        append(" dryInputRms=").append(signal.inputRms)
+                        append(" dspEngineOutputRms=").append(signal.outputRms)
+                        append(" finalAudioTrackMixMeasured=false")
                     } else {
-                        append("\nprePostSignal=not-connected-yet")
+                        append("\ndspEngineSignal=not-connected-yet")
                     }
                     append("\nstructuredEvents=").append(recentCount)
                     append(" activeBytes=").append(file?.takeIf { it.exists() }?.length() ?: 0L)
