@@ -20,6 +20,8 @@ object CompatibilityDiagnosticsReport {
         val store = CapturePolicyStore(app)
         val policy = store.read()
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
+        val diagnosticsFile = RootlessZachDiagnostics.latestDiagnosticsFile()
+        val recentStructuredEvents = RootlessZachDiagnostics.readRecentLines(200)
         val packageInfo = runCatching { app.packageManager.getPackageInfo(app.packageName, 0) }.getOrNull()
         val webView = runCatching { WebView.getCurrentWebViewPackage() }.getOrNull()
         return buildString {
@@ -67,8 +69,16 @@ object CompatibilityDiagnosticsReport {
             appendLine("[Rootless transport]")
             appendLine(transport?.compactString() ?: "state=no-telemetry-yet")
             appendLine()
+            appendLine("[Structured diagnostics]")
+            appendLine("schemaVersion=${AudioDiagnosticJson.SCHEMA_VERSION}")
+            appendLine("activeFilePresent=${diagnosticsFile?.exists() == true}")
+            appendLine("activeFileBytes=${diagnosticsFile?.takeIf { it.exists() }?.length() ?: 0L}")
+            appendLine("recentEventCount=${recentStructuredEvents.size}")
+            appendLine("storage=app-private-rotating-jsonl")
+            appendLine()
             appendLine("[Privacy]")
             appendLine("This report is generated locally and is not uploaded automatically.")
+            appendLine("Structured diagnostics contain technical counters only; raw PCM is never stored.")
             appendLine("locale=${Locale.getDefault().toLanguageTag()}")
         }
     }
