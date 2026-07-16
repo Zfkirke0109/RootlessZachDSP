@@ -18,6 +18,7 @@ import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import org.koin.android.ext.android.inject
+import timber.log.Timber
 
 class SettingsBackupFragment : SettingsBaseFragment() {
 
@@ -92,7 +93,7 @@ class SettingsBackupFragment : SettingsBaseFragment() {
     private fun openLoadFileSelection() {
         try {
             (requireActivity() as SettingsActivity).backupLoadFileSelectLauncher.launch(
-                arrayOf("application/tar+gzip", "application/gzip")
+                BackupManager.getSupportedMimeTypes()
             )
         }
         catch(ex: ActivityNotFoundException) {
@@ -131,13 +132,29 @@ class SettingsBackupFragment : SettingsBaseFragment() {
                     getString(R.string.backup_restore_mode_dirty)
                 )
             ) { dialogInterface, i ->
-                BackupRestoreService.start(requireActivity(), uri, i == 1)
+                persistBackupReadPermission(uri)
+                if (BackupRestoreService.start(requireActivity(), uri, i == 1)) {
+                    requireContext().toast(R.string.backup_restore_started)
+                } else {
+                    requireContext().toast(R.string.backup_in_progress)
+                }
                 dialogInterface.dismiss()
             }
             .setTitle(R.string.backup_restore_mode_title)
             .setNegativeButton(getString(android.R.string.cancel)){ _, _ -> }
             .create()
             .show()
+    }
+
+    private fun persistBackupReadPermission(uri: Uri) {
+        try {
+            requireContext().contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (exception: SecurityException) {
+            Timber.w(exception, "Document provider did not grant persistent backup access")
+        }
     }
 
     fun updateSummaries() {
