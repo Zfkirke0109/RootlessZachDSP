@@ -14,9 +14,10 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * In-memory bridge plus bounded app-private persistence for rootless transport diagnostics.
  *
- * [publish] is called by the urgent audio thread. It performs only an atomic reference update after
- * the one-time writer startup. JSON serialization and file I/O are performed by a dedicated writer
- * thread approximately every five seconds.
+ * [publish] is called by the urgent audio thread. It performs atomic updates and simple counter
+ * comparisons only. JSON serialization and file I/O are performed by a dedicated writer thread.
+ * Periodic snapshots are written approximately every five seconds; anomaly counter increases also
+ * request an immediate off-thread flush.
  */
 object RootlessZachDiagnostics {
     private val snapshot = AtomicReference<AudioTransportTelemetry.Snapshot?>(null)
@@ -42,8 +43,11 @@ object RootlessZachDiagnostics {
     )
 
     fun publish(value: AudioTransportTelemetry.Snapshot) {
-        snapshot.set(value)
+        val previous = snapshot.getAndSet(value)
         ensureWriterStarted()
+        if (previous != null && hasAnomalyIncrease(previous, value)) {
+            writer.execute { flushLatestSafely() }
+        }
     }
 
     fun latestTransportSnapshot(): AudioTransportTelemetry.Snapshot? = snapshot.get()
@@ -174,6 +178,16 @@ object RootlessZachDiagnostics {
             wallClockEpochMs = nowMs,
         )
     }
+
+    private fun hasAnomalyIncrease(
+        previous: AudioTransportTelemetry.Snapshot,
+        current: AudioTransportTelemetry.Snapshot,
+    ): Boolean =
+        current.recoveryCount > previous.recoveryCount ||
+            current.underrunCount > previous.underrunCount ||
+            current.deadlineMissCount > previous.deadlineMissCount ||
+            current.ioErrorCount > previous.ioErrorCount ||
+            current.bypassBufferCount > previous.bypassBufferCount
 
     private fun diagnosticsStore(): RotatingJsonlStore? {
         store.get()?.let { return it }
