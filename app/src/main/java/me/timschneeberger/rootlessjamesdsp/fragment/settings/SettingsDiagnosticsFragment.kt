@@ -55,6 +55,7 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
 
     private fun refreshStatus() {
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
+        val signal = RootlessZachDiagnostics.latestSignalSnapshot()
         val file = RootlessZachDiagnostics.latestDiagnosticsFile()
         val recentCount = RootlessZachDiagnostics.readRecentLines(200).size
         findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
@@ -63,6 +64,15 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
             } else {
                 buildString {
                     append(transport.compactString())
+                    if (signal != null) {
+                        append("\nprePostSamples=").append(signal.sampleCount)
+                        append(" outputChanged=").append(signal.outputChanged)
+                        append(" changedRatio=").append(signal.changedSampleRatio)
+                        append(" inputRms=").append(signal.inputRms)
+                        append(" outputRms=").append(signal.outputRms)
+                    } else {
+                        append("\nprePostSignal=not-connected-yet")
+                    }
                     append("\nstructuredEvents=").append(recentCount)
                     append(" activeBytes=").append(file?.takeIf { it.exists() }?.length() ?: 0L)
                 }
