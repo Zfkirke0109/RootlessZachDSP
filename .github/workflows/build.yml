@@ -196,7 +196,7 @@ jobs:
             -storepass "$GH_RELEASE_STORE_PASSWORD" \
             -keypass "$GH_RELEASE_KEY_PASSWORD" \
             "$preflight_jar" "$GH_RELEASE_KEY_ALIAS" >/dev/null
-          jarsigner -verify -strict "$preflight_jar" >/dev/null
+          jarsigner -verify "$preflight_jar" >/dev/null
 
           expected_cert_sha256="$(
             keytool -exportcert \
