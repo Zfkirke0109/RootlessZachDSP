@@ -8,21 +8,30 @@ Any coding agent may continue from a normal checkout of `develop/rootless-zach-f
 - Branch: `develop/rootless-zach-foundation`
 - Pull request: #1, open, mergeable, **draft**
 - Base: `master`
+- Current verified source head: `87de5f15b2694e875985b42db559d4a73065a520`
 - Do not merge without Zach's explicit approval.
 
-## Last fully CI-verified code checkpoint
+## Last fully CI-verified checkpoint
 
-Commit `74641264a4771b72c9f500f2a9a515201beb3dcc` completed `RootlessZachDSP Android CI` run `29474570643` successfully.
+Commit `87de5f15b2694e875985b42db559d4a73065a520` completed `RootlessZachDSP Android CI` run `29475700365` (run #105) successfully.
 
 That run completed:
 
-- deterministic audio-transport/unit tests;
+- deterministic audio-transport and JVM unit tests;
 - installable debug APK builds;
-- APK identity/signature/alignment/checksum verification;
-- Android lint and report upload;
+- APK identity, signature, 16 KiB alignment, and checksum verification;
+- Android lint and report collection;
 - artifact upload.
 
-Later commits add documentation only through `a3dc502859934e988727cfd48c4b13f01093a1b7`; confirm the current branch head and its CI before continuing.
+Test-only debug artifact:
+
+- name: `RootlessZachDSP-debug-test-only-5eb2c91fa8ccfea5e6ba5dcb01295f48d69b107c`
+- artifact ID: `8366594546`
+- archive size: `108100345` bytes
+- archive digest: `sha256:527d56ff06e5e85ecc752e70f51d5efd33ffc3bfd691b3174cf554f3d5f0e5cb`
+- workflow source head: `87de5f15b2694e875985b42db559d4a73065a520`
+
+The signed-release job was skipped, as expected for a pull-request build. This artifact is debug/test-only and does not prove production signing.
 
 ## Work completed after the original foundation checkpoint
 
@@ -31,6 +40,7 @@ Later commits add documentation only through `a3dc502859934e988727cfd48c4b13f010
 - `689c7c0` moved the existing Settings action from the bottom app bar into the top app bar.
 - `f9804a6` added accessibility text and overflow fallback behavior.
 - `SettingsActivity` and existing preference fragments remain the target; they were not recreated.
+- `3380254`, `406071e`, and `f3de364` add a rootless-only Diagnostics entry under regular Settings with View, Copy, Preview/Export, and Clear actions.
 - Physical-device confirmation of visibility and navigation is still required.
 
 ### Session parser corrections
@@ -40,10 +50,16 @@ Later commits add documentation only through `a3dc502859934e988727cfd48c4b13f010
 - Sanitized fixture: `app/src/test/resources/session_dump/audio_flinger_v30_pluto_sanitized.txt`.
 - Tests cover v30 parsing/deduplication, v29 compatibility, recognized metadata, multimap preservation, and ambiguous fallback refusal.
 
-### Telemetry correction
+### Telemetry and persistent diagnostics
 
 - `2a83408` timestamps recoveries and stops repeating an old recovery reason indefinitely.
 - `7464126` tests fresh versus stale recovery reporting.
+- `9540f88` adds an app-private rotating JSONL store with a 5 MiB active-file default and one rotated generation.
+- `be526f8` adds schema-versioned transport/anomaly JSON encoding.
+- `f7721f1` moves JSON serialization and file writes to a dedicated diagnostics thread.
+- `87de5f1` requests an off-thread flush when recovery, underrun, deadline-miss, I/O-error, or bypass counters increase, while retaining approximately five-second periodic snapshots.
+- `155c0df` adds structured-store status to the redacted compatibility report.
+- `0099f34` and `b66a2f3` add rotation, clearing, normalization, escaping, schema, and event tests.
 
 ### Device evidence documentation
 
@@ -73,20 +89,23 @@ The trace proves stable transport but not yet pre/post DSP signal change.
 
 ## Immediate continuation order
 
-1. Confirm current branch head, CI, and PR state.
-2. Build the first app-private rotating JSONL transport diagnostics store described in `AUDIO_DIAGNOSTICS_SCHEMA.md`.
-3. Keep file I/O and JSON serialization off the urgent audio thread.
-4. Emit discrete recovery/underrun/error events and approximately five-second periodic snapshots.
-5. Add unit tests for JSON escaping, rotation, event deltas, and write-failure tolerance.
-6. Add Settings > Diagnostics UI with View/Clear/Copy/Preview/Export only after the store is stable.
-7. Add pre/post signal accumulators and offline DSP self-test in a separate measured checkpoint.
-8. Install the resulting APK on the Galaxy S23 Ultra and validate Settings, Amazon Music session selection, self-session exclusion, AudioFlinger parsing, routes, screen lock, and recovery.
+1. Confirm the current branch head and CI because this handoff update itself follows the verified source checkpoint.
+2. Add a service-start call to `RootlessZachDiagnostics.beginEngineEpoch()` when the service lifecycle is edited safely.
+3. Add typed session-set and route/preset/module events.
+4. Add pre/post signal accumulators using preallocated buffers; do not persist PCM.
+5. Add deterministic signal-metric JVM/native tests for silence, sine, clipping, stereo asymmetry, bypass equality, and active-DSP difference.
+6. Add the offline DSP self-test in a separate measured checkpoint.
+7. Add instrumentation tests for Settings and Diagnostics navigation.
+8. Install the resulting APK on the Galaxy S23 Ultra and validate Settings, Amazon Music session selection, self-session exclusion, AudioFlinger parsing, speaker/Bluetooth/USB routes when available, screen lock, and recovery.
 
 ## Important code locations
 
 - Rootless service: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/service/RootlessAudioProcessorService.kt`
 - Transport telemetry: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioTransportTelemetry.kt`
-- Diagnostics bridge: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RootlessZachDiagnostics.kt`
+- Diagnostics bridge/store writer: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RootlessZachDiagnostics.kt`
+- JSON encoder: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/AudioDiagnosticJson.kt`
+- Rotating store: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RotatingJsonlStore.kt`
+- Diagnostics Settings UI: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/settings/SettingsDiagnosticsFragment.kt`
 - Compatibility report: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/CompatibilityDiagnosticsReport.kt`
 - Audio service parser: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/session/dump/provider/AudioServiceDumpProvider.kt`
 - AudioFlinger parser: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/session/dump/utils/AudioFlingerServiceDumpUtils.kt`
@@ -125,7 +144,7 @@ The foundation remains draft until:
 - RootlessZachDSP's own sessions are excluded;
 - false duplicate-PID warnings are gone;
 - AudioFlinger v30 parses cleanly;
-- structured diagnostics persist safely;
+- structured diagnostics persist safely on-device;
 - pre/post evidence can prove whether DSP changed the signal;
 - route/background/recovery validation shows no prolonged silence;
 - exported evidence passes privacy review.
