@@ -11,6 +11,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.diagnostics.CompatibilityDiagnosticsReport
+import me.timschneeberger.rootlessjamesdsp.diagnostics.DiagnosticsLeakScanner
 import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
 import java.io.File
@@ -95,6 +96,11 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
 
     private fun copySummary() {
         val report = CompatibilityDiagnosticsReport.build(requireContext())
+        val findings = DiagnosticsLeakScanner.scan(report)
+        if (findings.isNotEmpty()) {
+            showPrivacyBlock(findings)
+            return
+        }
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(
             ClipData.newPlainText(getString(R.string.rootless_zach_diagnostics_title), report),
@@ -104,6 +110,11 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
 
     private fun previewAndExport() {
         val bundle = buildRedactedBundle()
+        val findings = DiagnosticsLeakScanner.scan(bundle)
+        if (findings.isNotEmpty()) {
+            showPrivacyBlock(findings)
+            return
+        }
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.rootless_zach_diagnostics_preview_title)
             .setMessage(bundle.take(MAX_DIALOG_CHARACTERS))
@@ -111,6 +122,23 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
                 shareBundle(bundle)
             }
             .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showPrivacyBlock(findings: List<DiagnosticsLeakScanner.Finding>) {
+        val categories = findings
+            .groupingBy { it.category }
+            .eachCount()
+            .entries
+            .sortedBy { it.key.name }
+            .joinToString("\n") { (category, count) -> "$category: $count" }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_diagnostics_export_blocked_title)
+            .setMessage(
+                getString(R.string.rootless_zach_diagnostics_export_blocked, findings.size) +
+                    "\n\n" + categories,
+            )
+            .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 
