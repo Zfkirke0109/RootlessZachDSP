@@ -58,21 +58,44 @@ class AudioSignalTelemetry(
         require(clippingThreshold > 0.0) { "clippingThreshold must be positive" }
     }
 
-    @Synchronized
     fun recordFloat(input: FloatArray, output: FloatArray, samples: Int) {
-        require(samples >= 0 && samples <= input.size && samples <= output.size)
-        for (index in 0 until samples) {
-            recordNormalized(input[index].toDouble(), output[index].toDouble())
-        }
+        recordFloat(input, 0, output, 0, samples)
     }
 
     @Synchronized
-    fun recordShort(input: ShortArray, output: ShortArray, samples: Int) {
-        require(samples >= 0 && samples <= input.size && samples <= output.size)
-        for (index in 0 until samples) {
+    fun recordFloat(
+        input: FloatArray,
+        inputOffset: Int,
+        output: FloatArray,
+        outputOffset: Int,
+        samples: Int,
+    ) {
+        requireValidRange(input.size, inputOffset, output.size, outputOffset, samples)
+        for (relativeIndex in 0 until samples) {
             recordNormalized(
-                input[index].toDouble() / SHORT_NORMALIZER,
-                output[index].toDouble() / SHORT_NORMALIZER,
+                input[inputOffset + relativeIndex].toDouble(),
+                output[outputOffset + relativeIndex].toDouble(),
+            )
+        }
+    }
+
+    fun recordShort(input: ShortArray, output: ShortArray, samples: Int) {
+        recordShort(input, 0, output, 0, samples)
+    }
+
+    @Synchronized
+    fun recordShort(
+        input: ShortArray,
+        inputOffset: Int,
+        output: ShortArray,
+        outputOffset: Int,
+        samples: Int,
+    ) {
+        requireValidRange(input.size, inputOffset, output.size, outputOffset, samples)
+        for (relativeIndex in 0 until samples) {
+            recordNormalized(
+                input[inputOffset + relativeIndex].toDouble() / SHORT_NORMALIZER,
+                output[outputOffset + relativeIndex].toDouble() / SHORT_NORMALIZER,
             )
         }
     }
@@ -164,6 +187,20 @@ class AudioSignalTelemetry(
 
         inputHash = updateHash(inputHash, quantizeForHash(safeInput))
         outputHash = updateHash(outputHash, quantizeForHash(safeOutput))
+    }
+
+    private fun requireValidRange(
+        inputSize: Int,
+        inputOffset: Int,
+        outputSize: Int,
+        outputOffset: Int,
+        samples: Int,
+    ) {
+        require(inputOffset >= 0) { "inputOffset must not be negative" }
+        require(outputOffset >= 0) { "outputOffset must not be negative" }
+        require(samples >= 0) { "samples must not be negative" }
+        require(inputOffset <= inputSize - samples) { "input range exceeds buffer" }
+        require(outputOffset <= outputSize - samples) { "output range exceeds buffer" }
     }
 
     private fun quantizeForHash(value: Double): Long {
