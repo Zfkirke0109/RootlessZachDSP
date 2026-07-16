@@ -3,6 +3,7 @@ package me.timschneeberger.rootlessjamesdsp.audio.transport
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.sqrt
@@ -42,6 +43,47 @@ class AudioSignalTelemetryTest {
         assertEquals(1.1, snapshot.outputPeak, 1.0e-6)
         assertEquals(1L, snapshot.outputClippedSamples)
         assertNotEquals(snapshot.inputHash, snapshot.outputHash)
+    }
+
+    @Test
+    fun `float range records only requested input and output windows`() {
+        val telemetry = AudioSignalTelemetry(hashSeed = 31L)
+        val input = floatArrayOf(9f, 0.25f, -0.25f, 8f)
+        val output = floatArrayOf(7f, 0.5f, -0.5f, 6f)
+
+        telemetry.recordFloat(input, 1, output, 1, 2)
+        val snapshot = telemetry.snapshot()
+
+        assertEquals(2L, snapshot.sampleCount)
+        assertEquals(0.25, snapshot.inputPeak, 1.0e-12)
+        assertEquals(0.5, snapshot.outputPeak, 1.0e-12)
+        assertEquals(2L, snapshot.changedSamples)
+    }
+
+    @Test
+    fun `short range supports offset input and zero based output`() {
+        val telemetry = AudioSignalTelemetry(hashSeed = 17L)
+        val input = shortArrayOf(30_000, 8_192, -8_192, 30_000)
+        val output = shortArrayOf(4_096, -4_096)
+
+        telemetry.recordShort(input, 1, output, 0, 2)
+        val snapshot = telemetry.snapshot()
+
+        assertEquals(2L, snapshot.sampleCount)
+        assertEquals(0.25, snapshot.inputPeak, 1.0e-12)
+        assertEquals(0.125, snapshot.outputPeak, 1.0e-12)
+        assertEquals(2L, snapshot.changedSamples)
+    }
+
+    @Test
+    fun `invalid ranges are rejected before reading buffers`() {
+        val telemetry = AudioSignalTelemetry(hashSeed = 13L)
+        assertThrows(IllegalArgumentException::class.java) {
+            telemetry.recordFloat(floatArrayOf(1f), 1, floatArrayOf(1f), 0, 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            telemetry.recordShort(shortArrayOf(1), 0, shortArrayOf(1), -1, 1)
+        }
     }
 
     @Test
