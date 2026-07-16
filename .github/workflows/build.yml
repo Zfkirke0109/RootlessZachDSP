@@ -117,7 +117,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RootlessZachDSP-debug-${{ github.sha }}
+          name: RootlessZachDSP-debug-test-only-${{ github.sha }}
           if-no-files-found: error
           path: |
             app/build/outputs/apk/rootlessFdroid/debug/*.apk
@@ -133,11 +133,14 @@ jobs:
           exit 1
 
   signed-release:
-    name: Build, verify, and publish signed release
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    name: Build and verify signed release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      startsWith(github.ref, 'refs/heads/develop/')
     needs: test-and-build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Check out repository and DSP submodules
@@ -146,11 +149,67 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Validate signing secrets and key before compilation
+        shell: bash
+        env:
+          GH_RELEASE_KEYSTORE_BASE64: ${{ secrets.GH_RELEASE_KEYSTORE_BASE64 }}
+          GH_RELEASE_STORE_PASSWORD: ${{ secrets.GH_RELEASE_STORE_PASSWORD }}
+          GH_RELEASE_KEY_ALIAS: ${{ secrets.GH_RELEASE_KEY_ALIAS }}
+          GH_RELEASE_KEY_PASSWORD: ${{ secrets.GH_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for secret in GH_RELEASE_KEYSTORE_BASE64 GH_RELEASE_STORE_PASSWORD GH_RELEASE_KEY_ALIAS GH_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Required signing secret $secret is not configured. Refusing to compile or upload a release APK."
+              exit 1
+            fi
+          done
+
+          keystore_path="$RUNNER_TEMP/rootless-zach-dsp-release.p12"
+          preflight_dir="$RUNNER_TEMP/signing-preflight"
+          preflight_jar="$RUNNER_TEMP/signing-preflight.jar"
+          rm -rf "$preflight_dir" "$preflight_jar" "$keystore_path"
+          mkdir -p "$preflight_dir"
+
+          printf '%s' "$GH_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+          test -s "$keystore_path" || { echo "::error::Decoded release keystore is empty."; exit 1; }
+
+          keytool -list \
+            -keystore "$keystore_path" \
+            -storepass "$GH_RELEASE_STORE_PASSWORD" \
+            -alias "$GH_RELEASE_KEY_ALIAS" >/dev/null
+
+          printf 'RootlessZachDSP signing preflight\n' > "$preflight_dir/probe.txt"
+          jar --create --file "$preflight_jar" -C "$preflight_dir" probe.txt
+          jarsigner \
+            -keystore "$keystore_path" \
+            -storepass "$GH_RELEASE_STORE_PASSWORD" \
+            -keypass "$GH_RELEASE_KEY_PASSWORD" \
+            "$preflight_jar" "$GH_RELEASE_KEY_ALIAS" >/dev/null
+          jarsigner -verify -strict "$preflight_jar" >/dev/null
+
+          expected_cert_sha256="$(
+            keytool -exportcert \
+              -keystore "$keystore_path" \
+              -storepass "$GH_RELEASE_STORE_PASSWORD" \
+              -alias "$GH_RELEASE_KEY_ALIAS" \
+              | sha256sum | awk '{print toupper($1)}'
+          )"
+          test -n "$expected_cert_sha256" || { echo "::error::Could not derive signing certificate fingerprint."; exit 1; }
+
+          echo "GH_RELEASE_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          echo "GH_RELEASE_CERT_SHA256=$expected_cert_sha256" >> "$GITHUB_ENV"
+          echo "Signing material validated before compilation; expected certificate SHA-256: $expected_cert_sha256"
 
       - name: Set up Android command-line tools
         uses: android-actions/setup-android@v3
@@ -169,55 +228,64 @@ jobs:
             "$ANDROID_NDK_PACKAGE" \
             "$ANDROID_CMAKE_PACKAGE"
 
-      - name: Build signed privacy-first release APKs
+      - name: Compile and package signed privacy-first release APKs
         shell: bash
         env:
-          GH_RELEASE_KEYSTORE_BASE64: ${{ secrets.GH_RELEASE_KEYSTORE_BASE64 }}
           GH_RELEASE_STORE_PASSWORD: ${{ secrets.GH_RELEASE_STORE_PASSWORD }}
           GH_RELEASE_KEY_ALIAS: ${{ secrets.GH_RELEASE_KEY_ALIAS }}
           GH_RELEASE_KEY_PASSWORD: ${{ secrets.GH_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          for secret in GH_RELEASE_KEYSTORE_BASE64 GH_RELEASE_STORE_PASSWORD GH_RELEASE_KEY_ALIAS GH_RELEASE_KEY_PASSWORD; do
-            if [ -z "${!secret}" ]; then
-              echo "::error::Required secret $secret is not configured."
-              exit 1
-            fi
-          done
+          test -s "$GH_RELEASE_KEYSTORE_PATH" || { echo "::error::Validated release keystore is unavailable."; exit 1; }
+          ./gradlew --stacktrace assembleRootlessFdroidRelease
 
-          keystore_path="$RUNNER_TEMP/rootless-zach-dsp-release.p12"
-          trap 'rm -f "$keystore_path"' EXIT
-          printf '%s' "$GH_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
-          chmod 600 "$keystore_path"
-
-          GH_RELEASE_KEYSTORE_PATH="$keystore_path" \
-            ./gradlew --stacktrace assembleRootlessFdroidRelease
-
-      - name: Verify signatures, identity, 16 KiB alignment, and checksums
+      - name: Verify certificate, identity, 16 KiB alignment, and checksums
         shell: bash
         run: |
           set -euo pipefail
           APK_DIR="app/build/outputs/apk/rootlessFdroid/release"
+          VERIFY_DIR="ci-artifacts/release-verification"
+          mkdir -p "$VERIFY_DIR"
           mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
           test "${#APKS[@]}" -gt 0 || { echo "No release APKs found" >&2; exit 1; }
           : > "$APK_DIR/SHA256SUMS.txt"
+
           for apk in "${APKS[@]}"; do
-            echo "Verifying $apk"
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
-            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
+            name="$(basename "$apk")"
+            report="$VERIFY_DIR/${name}.apksigner.txt"
+            echo "Verifying $name"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$report"
+
+            actual_cert_sha256="$(
+              awk -F': ' '/Signer #[0-9]+ certificate SHA-256 digest:/ {print toupper($2); exit}' "$report" \
+                | tr -d '[:space:]:'
+            )"
+            test -n "$actual_cert_sha256" || { echo "::error::No signer certificate found in $name."; exit 1; }
+            if [ "$actual_cert_sha256" != "$GH_RELEASE_CERT_SHA256" ]; then
+              echo "::error::Signing certificate mismatch for $name. Expected $GH_RELEASE_CERT_SHA256, got $actual_cert_sha256."
+              exit 1
+            fi
+
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
             "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
-              | grep -q "package: name='com.zfkirke0109.rootlesszachdsp'"
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" \
+              "$VERIFY_DIR/${name}.badging.txt"
             sha256sum "$apk" >> "$APK_DIR/SHA256SUMS.txt"
           done
 
-      - name: Upload signed release artifacts
+      - name: Upload certificate-verified signed release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RootlessZachDSP-${{ github.ref_name }}-signed
+          name: RootlessZachDSP-signed-${{ github.sha }}
           if-no-files-found: error
           path: |
             app/build/outputs/apk/rootlessFdroid/release/*.apk
             app/build/outputs/apk/rootlessFdroid/release/SHA256SUMS.txt
+            ci-artifacts/release-verification/**
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -229,3 +297,10 @@ jobs:
           files: |
             app/build/outputs/apk/rootlessFdroid/release/*.apk
             app/build/outputs/apk/rootlessFdroid/release/SHA256SUMS.txt
+
+      - name: Remove signing material from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${GH_RELEASE_KEYSTORE_PATH:-}" "$RUNNER_TEMP/signing-preflight.jar"
+          rm -rf "$RUNNER_TEMP/signing-preflight"
