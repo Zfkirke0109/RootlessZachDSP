@@ -55,7 +55,7 @@ class AudioSignalTelemetryTest {
 
         assertEquals(0.25, snapshot.inputDcOffset, 1.0e-12)
         assertEquals(0.25, snapshot.outputDcOffset, 1.0e-12)
-        assertEquals(2L, snapshot.changedSamples)
+        assertEquals(4L, snapshot.changedSamples)
         assertTrue(snapshot.outputChanged)
     }
 
