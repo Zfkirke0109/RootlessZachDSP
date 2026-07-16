@@ -14,8 +14,10 @@ class AudioSignalTelemetry(
     private val silenceThreshold: Double = DEFAULT_SILENCE_THRESHOLD,
     private val changeThreshold: Double = DEFAULT_CHANGE_THRESHOLD,
     private val clippingThreshold: Double = DEFAULT_CLIPPING_THRESHOLD,
+    private val clockNanos: () -> Long = System::nanoTime,
 ) {
     data class Snapshot(
+        val capturedAtNanos: Long,
         val sampleCount: Long,
         val inputRms: Double,
         val outputRms: Double,
@@ -47,7 +49,7 @@ class AudioSignalTelemetry(
     private var outputClippedSamples = 0L
     private var changedSamples = 0L
     private var inputHash = FNV_OFFSET_BASIS xor hashSeed
-    private var outputHash = FNV_OFFSET_BASIS xor hashSeed.rotateLeft(17)
+    private var outputHash = FNV_OFFSET_BASIS xor hashSeed
 
     init {
         require(silenceThreshold >= 0.0) { "silenceThreshold must not be negative" }
@@ -74,9 +76,11 @@ class AudioSignalTelemetry(
 
     @Synchronized
     fun snapshot(): Snapshot {
+        val capturedAtNanos = clockNanos()
         val count = sampleCount
         if (count == 0L) {
             return Snapshot(
+                capturedAtNanos = capturedAtNanos,
                 sampleCount = 0,
                 inputRms = 0.0,
                 outputRms = 0.0,
@@ -98,6 +102,7 @@ class AudioSignalTelemetry(
         val denominator = count.toDouble()
         val changedRatio = changedSamples / denominator
         return Snapshot(
+            capturedAtNanos = capturedAtNanos,
             sampleCount = count,
             inputRms = sqrt(inputSquareSum / denominator),
             outputRms = sqrt(outputSquareSum / denominator),
@@ -113,7 +118,7 @@ class AudioSignalTelemetry(
             changedSampleRatio = changedRatio,
             inputHash = inputHash,
             outputHash = outputHash,
-            outputChanged = changedSamples > 0L && inputHash != outputHash,
+            outputChanged = changedSamples > 0L || inputHash != outputHash,
         )
     }
 
@@ -132,13 +137,13 @@ class AudioSignalTelemetry(
         outputClippedSamples = 0L
         changedSamples = 0L
         inputHash = FNV_OFFSET_BASIS xor newHashSeed
-        outputHash = FNV_OFFSET_BASIS xor newHashSeed.rotateLeft(17)
+        outputHash = FNV_OFFSET_BASIS xor newHashSeed
     }
 
     @Synchronized
     private fun recordNormalized(input: Double, output: Double) {
-        val safeInput = input.takeIf(Double::isFinite) ?: 0.0
-        val safeOutput = output.takeIf(Double::isFinite) ?: 0.0
+        val safeInput = input.takeIf { it.isFinite() } ?: 0.0
+        val safeOutput = output.takeIf { it.isFinite() } ?: 0.0
         val inputAbs = abs(safeInput)
         val outputAbs = abs(safeOutput)
 
