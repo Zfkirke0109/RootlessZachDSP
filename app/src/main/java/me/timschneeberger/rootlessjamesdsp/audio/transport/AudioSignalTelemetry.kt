@@ -15,6 +15,7 @@ class AudioSignalTelemetry(
     private val silenceThreshold: Double = DEFAULT_SILENCE_THRESHOLD,
     private val changeThreshold: Double = DEFAULT_CHANGE_THRESHOLD,
     private val clippingThreshold: Double = DEFAULT_CLIPPING_THRESHOLD,
+    private val hashStride: Int = 1,
     private val clockNanos: () -> Long = System::nanoTime,
 ) {
     data class Snapshot(
@@ -34,6 +35,7 @@ class AudioSignalTelemetry(
         val changedSampleRatio: Double,
         val inputHash: Long,
         val outputHash: Long,
+        val hashStride: Int,
         val outputChanged: Boolean,
     )
 
@@ -51,11 +53,13 @@ class AudioSignalTelemetry(
     private var changedSamples = 0L
     private var inputHash = FNV_OFFSET_BASIS xor hashSeed
     private var outputHash = FNV_OFFSET_BASIS xor hashSeed
+    private var samplesUntilNextHash = 0
 
     init {
         require(silenceThreshold >= 0.0) { "silenceThreshold must not be negative" }
         require(changeThreshold >= 0.0) { "changeThreshold must not be negative" }
         require(clippingThreshold > 0.0) { "clippingThreshold must be positive" }
+        require(hashStride > 0) { "hashStride must be positive" }
     }
 
     fun recordFloat(input: FloatArray, output: FloatArray, samples: Int) {
@@ -122,6 +126,7 @@ class AudioSignalTelemetry(
                 changedSampleRatio = 0.0,
                 inputHash = inputHash,
                 outputHash = outputHash,
+                hashStride = hashStride,
                 outputChanged = false,
             )
         }
@@ -144,6 +149,7 @@ class AudioSignalTelemetry(
             changedSampleRatio = changedRatio,
             inputHash = inputHash,
             outputHash = outputHash,
+            hashStride = hashStride,
             outputChanged = changedSamples > 0L || inputHash != outputHash,
         )
     }
@@ -164,6 +170,7 @@ class AudioSignalTelemetry(
         changedSamples = 0L
         inputHash = FNV_OFFSET_BASIS xor newHashSeed
         outputHash = FNV_OFFSET_BASIS xor newHashSeed
+        samplesUntilNextHash = 0
     }
 
     private fun recordNormalized(input: Double, output: Double) {
@@ -185,8 +192,13 @@ class AudioSignalTelemetry(
         if (outputAbs >= clippingThreshold) outputClippedSamples++
         if (abs(safeInput - safeOutput) > changeThreshold) changedSamples++
 
-        inputHash = updateHash(inputHash, quantizeForHash(safeInput))
-        outputHash = updateHash(outputHash, quantizeForHash(safeOutput))
+        if (samplesUntilNextHash == 0) {
+            inputHash = updateHash(inputHash, quantizeForHash(safeInput))
+            outputHash = updateHash(outputHash, quantizeForHash(safeOutput))
+            samplesUntilNextHash = hashStride - 1
+        } else {
+            samplesUntilNextHash--
+        }
     }
 
     private fun requireValidRange(
