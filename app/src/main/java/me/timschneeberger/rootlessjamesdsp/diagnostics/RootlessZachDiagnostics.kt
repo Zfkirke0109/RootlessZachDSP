@@ -2,6 +2,7 @@ package me.timschneeberger.rootlessjamesdsp.diagnostics
 
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.MainApplication
+import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 import timber.log.Timber
 import java.io.File
@@ -12,15 +13,16 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * In-memory bridge plus bounded app-private persistence for rootless transport diagnostics.
+ * In-memory bridge plus bounded app-private persistence for rootless diagnostics.
  *
- * [publish] is called by the urgent audio thread. It performs atomic updates and simple counter
- * comparisons only. JSON serialization and file I/O are performed by a dedicated writer thread.
- * Periodic snapshots are written approximately every five seconds; anomaly counter increases also
- * request an immediate off-thread flush.
+ * [publish] and [publishSignal] may be called from the urgent audio thread. They perform atomic
+ * updates and simple counter comparisons only. JSON serialization and file I/O are performed by a
+ * dedicated writer thread. Periodic snapshots are written approximately every five seconds;
+ * anomaly counter increases also request an immediate off-thread flush.
  */
 object RootlessZachDiagnostics {
-    private val snapshot = AtomicReference<AudioTransportTelemetry.Snapshot?>(null)
+    private val transportSnapshot = AtomicReference<AudioTransportTelemetry.Snapshot?>(null)
+    private val signalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
     private val writerStarted = AtomicBoolean(false)
     private val store = AtomicReference<RotatingJsonlStore?>(null)
     private val droppedEventCount = AtomicLong(0L)
@@ -33,7 +35,7 @@ object RootlessZachDiagnostics {
     private var engineEpoch = newEpoch()
 
     // Accessed only by the diagnostics writer thread.
-    private var lastPersistedSnapshot: AudioTransportTelemetry.Snapshot? = null
+    private var lastPersistedTransportSnapshot: AudioTransportTelemetry.Snapshot? = null
 
     private val buildIdentity = DiagnosticBuildIdentity(
         applicationId = BuildConfig.APPLICATION_ID,
@@ -43,31 +45,42 @@ object RootlessZachDiagnostics {
     )
 
     fun publish(value: AudioTransportTelemetry.Snapshot) {
-        val previous = snapshot.getAndSet(value)
+        val previous = transportSnapshot.getAndSet(value)
         ensureWriterStarted()
         if (previous != null && hasAnomalyIncrease(previous, value)) {
             writer.execute { flushLatestSafely() }
         }
     }
 
-    fun latestTransportSnapshot(): AudioTransportTelemetry.Snapshot? = snapshot.get()
-
-    /** Begins a new correlation epoch; call from a service-start hook in the next diagnostics stage. */
-    fun beginEngineEpoch() {
-        engineEpoch = newEpoch()
-        writer.execute { lastPersistedSnapshot = null }
+    fun publishSignal(value: AudioSignalTelemetry.Snapshot) {
+        signalSnapshot.set(value)
         ensureWriterStarted()
     }
 
-    /** Clears only the in-memory latest snapshot, preserving persisted history. */
-    fun clear() = snapshot.set(null)
+    fun latestTransportSnapshot(): AudioTransportTelemetry.Snapshot? = transportSnapshot.get()
+
+    fun latestSignalSnapshot(): AudioSignalTelemetry.Snapshot? = signalSnapshot.get()
+
+    /** Starts a new non-identifying correlation epoch for a service/engine lifetime. */
+    fun beginEngineEpoch() {
+        engineEpoch = newEpoch()
+        signalSnapshot.set(null)
+        writer.execute { lastPersistedTransportSnapshot = null }
+        ensureWriterStarted()
+    }
+
+    /** Clears only the in-memory latest snapshots, preserving persisted history. */
+    fun clear() {
+        transportSnapshot.set(null)
+        signalSnapshot.set(null)
+    }
 
     fun clearHistory() {
-        snapshot.set(null)
+        clear()
         writer.execute {
             runCatching { diagnosticsStore()?.clear() }
                 .onFailure { Timber.w(it, "Unable to clear RootlessZach diagnostics history") }
-            lastPersistedSnapshot = null
+            lastPersistedTransportSnapshot = null
             droppedEventCount.set(0L)
         }
     }
@@ -90,12 +103,13 @@ object RootlessZachDiagnostics {
     }
 
     private fun flushLatestSafely() {
-        val current = snapshot.get() ?: return
-        val previous = lastPersistedSnapshot
+        val current = transportSnapshot.get() ?: return
+        val currentSignal = signalSnapshot.get()
+        val previous = lastPersistedTransportSnapshot
         val droppedBeforeWrite = droppedEventCount.get()
         val nowMs = System.currentTimeMillis()
         val epoch = engineEpoch
-        val lines = ArrayList<String>(6)
+        val lines = ArrayList<String>(7)
 
         if (previous != null) {
             addDelta(
@@ -147,10 +161,18 @@ object RootlessZachDiagnostics {
             wallClockEpochMs = nowMs,
             droppedEventCount = droppedBeforeWrite,
         )
+        currentSignal?.let { signal ->
+            lines += AudioDiagnosticJson.signalSnapshot(
+                snapshot = signal,
+                build = buildIdentity,
+                engineEpoch = epoch,
+                wallClockEpochMs = nowMs,
+            )
+        }
 
         try {
             diagnosticsStore()?.appendLines(lines) ?: return
-            lastPersistedSnapshot = current
+            lastPersistedTransportSnapshot = current
             if (droppedBeforeWrite > 0L) {
                 droppedEventCount.addAndGet(-droppedBeforeWrite)
             }
