@@ -38,7 +38,7 @@ class AudioDiagnosticJsonTest {
     }
 
     @Test
-    fun `signal snapshot contains aggregates but no pcm or path fields`() {
+    fun `signal snapshot contains explicit engine boundary and no pcm or path fields`() {
         var now = 77L
         val telemetry = AudioSignalTelemetry(hashSeed = 123L, clockNanos = { now })
         telemetry.recordFloat(
@@ -55,6 +55,11 @@ class AudioDiagnosticJsonTest {
         )
 
         assertTrue(json.contains("\"eventType\":\"SIGNAL_SNAPSHOT\""))
+        assertTrue(
+            json.contains(
+                "\"measurementBoundary\":\"${AudioDiagnosticJson.SIGNAL_MEASUREMENT_BOUNDARY}\"",
+            ),
+        )
         assertTrue(json.contains("\"capturedAtNanos\":77"))
         assertTrue(json.contains("\"sampleCount\":3"))
         assertTrue(json.contains("\"outputChanged\":true"))
