@@ -1,5 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.diagnostics
 
+import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 
 internal data class DiagnosticBuildIdentity(
@@ -11,6 +12,7 @@ internal data class DiagnosticBuildIdentity(
 
 internal enum class AudioDiagnosticEventType {
     TRANSPORT_SNAPSHOT,
+    SIGNAL_SNAPSHOT,
     RECOVERY,
     UNDERRUN,
     DEADLINE_MISS,
@@ -31,7 +33,7 @@ internal object AudioDiagnosticJson {
     ): String = buildString(640) {
         beginEnvelope(
             type = AudioDiagnosticEventType.TRANSPORT_SNAPSHOT,
-            snapshot = snapshot,
+            capturedAtNanos = snapshot.capturedAtNanos,
             build = build,
             engineEpoch = engineEpoch,
             wallClockEpochMs = wallClockEpochMs,
@@ -58,6 +60,38 @@ internal object AudioDiagnosticJson {
         endObject()
     }
 
+    fun signalSnapshot(
+        snapshot: AudioSignalTelemetry.Snapshot,
+        build: DiagnosticBuildIdentity,
+        engineEpoch: String,
+        wallClockEpochMs: Long,
+    ): String = buildString(640) {
+        beginEnvelope(
+            type = AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
+            capturedAtNanos = snapshot.capturedAtNanos,
+            build = build,
+            engineEpoch = engineEpoch,
+            wallClockEpochMs = wallClockEpochMs,
+        )
+        number("sampleCount", snapshot.sampleCount)
+        decimal("inputRms", snapshot.inputRms)
+        decimal("outputRms", snapshot.outputRms)
+        decimal("inputPeak", snapshot.inputPeak)
+        decimal("outputPeak", snapshot.outputPeak)
+        decimal("inputDcOffset", snapshot.inputDcOffset)
+        decimal("outputDcOffset", snapshot.outputDcOffset)
+        decimal("inputSilenceRatio", snapshot.inputSilenceRatio)
+        decimal("outputSilenceRatio", snapshot.outputSilenceRatio)
+        number("inputClippedSamples", snapshot.inputClippedSamples)
+        number("outputClippedSamples", snapshot.outputClippedSamples)
+        number("changedSamples", snapshot.changedSamples)
+        decimal("changedSampleRatio", snapshot.changedSampleRatio)
+        string("inputHash", java.lang.Long.toUnsignedString(snapshot.inputHash, 16))
+        string("outputHash", java.lang.Long.toUnsignedString(snapshot.outputHash, 16))
+        boolean("outputChanged", snapshot.outputChanged)
+        endObject()
+    }
+
     fun counterDelta(
         type: AudioDiagnosticEventType,
         delta: Long,
@@ -66,8 +100,17 @@ internal object AudioDiagnosticJson {
         engineEpoch: String,
         wallClockEpochMs: Long,
     ): String = buildString(320) {
-        require(type != AudioDiagnosticEventType.TRANSPORT_SNAPSHOT)
-        beginEnvelope(type, snapshot, build, engineEpoch, wallClockEpochMs)
+        require(
+            type != AudioDiagnosticEventType.TRANSPORT_SNAPSHOT &&
+                type != AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
+        )
+        beginEnvelope(
+            type = type,
+            capturedAtNanos = snapshot.capturedAtNanos,
+            build = build,
+            engineEpoch = engineEpoch,
+            wallClockEpochMs = wallClockEpochMs,
+        )
         number("delta", delta)
         number("bufferSamples", snapshot.bufferSamples)
         decimal("processingLoadEwma", snapshot.processingLoadEwma)
@@ -108,7 +151,7 @@ internal object AudioDiagnosticJson {
 
     private fun StringBuilder.beginEnvelope(
         type: AudioDiagnosticEventType,
-        snapshot: AudioTransportTelemetry.Snapshot,
+        capturedAtNanos: Long,
         build: DiagnosticBuildIdentity,
         engineEpoch: String,
         wallClockEpochMs: Long,
@@ -116,7 +159,7 @@ internal object AudioDiagnosticJson {
         append('{')
         number("schemaVersion", SCHEMA_VERSION, first = true)
         string("eventType", type.name)
-        number("capturedAtNanos", snapshot.capturedAtNanos)
+        number("capturedAtNanos", capturedAtNanos)
         number("wallClockEpochMs", wallClockEpochMs)
         string("applicationId", build.applicationId)
         string("versionName", build.versionName)
@@ -133,6 +176,10 @@ internal object AudioDiagnosticJson {
     private fun StringBuilder.decimal(name: String, value: Double) {
         append(',').append('"').append(escape(name)).append("\":")
         append(if (value.isFinite()) value else 0.0)
+    }
+
+    private fun StringBuilder.boolean(name: String, value: Boolean) {
+        append(',').append('"').append(escape(name)).append("\":").append(value)
     }
 
     private fun StringBuilder.string(name: String, value: String) {
