@@ -23,12 +23,17 @@ Exit criteria: tests and lint pass; debug APK builds; no transport path assumes 
 - Compatibility report screen with copy/export actions.
 - Route, WebView, OS, playback-policy, permission, and transport-state explanations.
 - Redacted support bundle with explicit privacy choices.
+- Source Fidelity & Headroom inspector for the current AudioTrack-input telemetry window.
+- Truthful proprietary-codec integration state that never infers source authentication from post-capture PCM.
+
+Current checkpoint: the source-fidelity inspector reports peak, dBFS headroom, a conservative preamp recommendation, and the unmeasured final-system boundary. It stores no raw PCM.
 
 ## Milestone 3 — automation and fallback
 
 - Documented, permission-protected intents for start/stop/toggle/profile/effect state.
 - App-plus-device profile rules with deterministic priority.
 - Experimental `DynamicsProcessing` fallback for compatible audio sessions.
+- Enforce mutual exclusion between playback-capture transport and session-effect fallback to prevent double processing.
 
 ## Milestone 4 — metering and channel tools
 
@@ -49,3 +54,6 @@ Exit criteria: tests and lint pass; debug APK builds; no transport path assumes 
 - Versioned RootlessZachDSP preset bundles.
 - Experimental pitch shifting/time stretching.
 - Separate microphone-processing mode.
+- Optional source-decoder modules only after copyright, redistribution, patent, trademark, conformance, and GPL-compatibility review.
+
+MQA remains behind an authorization gate. No decoder, renderer, carrier detector, authentication implementation, proprietary binary, or trademark claim may be enabled without a written MQA Labs agreement covering this exact Android distribution model.
