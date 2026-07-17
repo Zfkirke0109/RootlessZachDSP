@@ -136,8 +136,8 @@ jobs:
           "$AAPT" dump xmltree "$APK" res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml \
             | tee ci-evidence/apk/launcher-xmltree.txt >/dev/null
 
-          LAUNCHER_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:mipmap/ic_rootless_zach_launcher:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*resource (0x[0-9a-fA-F]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
-          ICON_ART_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:drawable/rootless_zach_icon_art:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*resource (0x[0-9a-fA-F]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
+          LAUNCHER_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:mipmap/ic_rootless_zach_launcher:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*(spec )?resource (0x[0-9a-fA-F]+).*/\2/' | tr '[:upper:]' '[:lower:]')"
+          ICON_ART_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:drawable/rootless_zach_icon_art:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*(spec )?resource (0x[0-9a-fA-F]+).*/\2/' | tr '[:upper:]' '[:lower:]')"
           test -n "$LAUNCHER_ID"
           test -n "$ICON_ART_ID"
 
