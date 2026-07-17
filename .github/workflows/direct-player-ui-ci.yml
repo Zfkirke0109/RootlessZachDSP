@@ -187,17 +187,35 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
-            mkdir -p "$GITHUB_WORKSPACE/ci-evidence"
+            set +e
+            mkdir -p "$GITHUB_WORKSPACE/ci-evidence/emulator"
             ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest \
-              2>&1 | tee "$GITHUB_WORKSPACE/ci-evidence/emulator-gradle.log"
+              2>&1 | tee "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle.log"
+            status=${PIPESTATUS[0]}
+            printf '%s\n' "$status" > "$GITHUB_WORKSPACE/ci-evidence/emulator/exit-code.txt"
+            find "$GITHUB_WORKSPACE/app/build/outputs/androidTest-results" -type f -maxdepth 8 \
+              -exec cp --parents '{}' "$GITHUB_WORKSPACE/ci-evidence/emulator/" \; 2>/dev/null || true
+            exit 0
+      - name: Summarize emulator result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status_file="$GITHUB_WORKSPACE/ci-evidence/emulator/exit-code.txt"
+          test -f "$status_file"
+          status="$(cat "$status_file")"
+          grep -Ein 'FAILURES|FAILED|NoMatchingViewException|AssertionFailedError|Process crashed|Exception|Error:' \
+            "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle.log" \
+            | tail -n 80 \
+            | tee "$GITHUB_WORKSPACE/ci-evidence/emulator/failure-summary.txt" || true
+          tail -n 160 "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle.log" \
+            > "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle-tail.txt"
+          test "$status" = "0"
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: direct-player-emulator-${{ github.sha }}
-          path: |
-            ci-evidence/emulator-gradle.log
-            app/build/outputs/androidTest-results/**
-            app/build/reports/androidTests/**
-          if-no-files-found: warn
+          path: ${{ github.workspace }}/ci-evidence/emulator
+          if-no-files-found: error
+          retention-days: 90
