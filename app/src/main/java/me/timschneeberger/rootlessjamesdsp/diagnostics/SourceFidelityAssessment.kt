@@ -29,15 +29,20 @@ object SourceFidelityAssessment {
     ) {
         fun compactString(): String = buildString {
             append("risk=").append(risk)
-            append(" targetPeakDbfs=").append(formatDb(targetPeakDbfs))
+            append(" targetPeakDbfs=")
+                .append(SourceFidelityAssessment.formatDb(targetPeakDbfs))
             if (outputPeak == null || outputPeakDbfs == null || headroomDb == null) {
                 append(" currentWindowPeak=unknown")
             } else {
-                append(" currentWindowPeak=").append(formatLinear(outputPeak))
-                append(" currentWindowPeakDbfs=").append(formatDb(outputPeakDbfs))
-                append(" currentWindowHeadroomDb=").append(formatDb(headroomDb))
+                append(" currentWindowPeak=")
+                    .append(SourceFidelityAssessment.formatLinear(outputPeak))
+                append(" currentWindowPeakDbfs=")
+                    .append(SourceFidelityAssessment.formatDb(outputPeakDbfs))
+                append(" currentWindowHeadroomDb=")
+                    .append(SourceFidelityAssessment.formatDb(headroomDb))
             }
-            append(" recommendedPreampDb=").append(formatDb(recommendedPreampDb))
+            append(" recommendedPreampDb=")
+                .append(SourceFidelityAssessment.formatDb(recommendedPreampDb))
             append(" finalSystemMixMeasured=").append(finalSystemMixMeasured)
         }
     }
