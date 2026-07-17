@@ -11,29 +11,34 @@
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:liftOnScrollTargetViewId="@id/dsp_scrollview"
+        android:fitsSystemWindows="true"
         app:liftOnScroll="true"
-        android:fitsSystemWindows="true">
+        app:liftOnScrollTargetViewId="@id/dsp_scrollview">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
+        <!--
+            Keep the title toolbar and Settings action as sibling views. A nested ActionMenuView
+            can be measured out of the visible action area on some Samsung/One UI layouts.
+            The fixed 56dp end-aligned action target remains visible without affecting title centering.
+        -->
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:titleCentered="true">
+            android:layout_height="?attr/actionBarSize">
 
-            <!--
-                MainActivity already inflates the Settings action into this ActionMenuView.
-                Keeping the existing ID/listener while moving it into the standard top app bar
-                makes Settings reliably reachable on gesture-navigation and Samsung layouts.
-            -->
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:titleCentered="true" />
+
             <androidx.appcompat.widget.ActionMenuView
                 android:id="@+id/left_menu"
-                android:layout_width="wrap_content"
+                android:layout_width="56dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="end|center_vertical"
-                android:minWidth="48dp"
+                android:importantForAccessibility="yes"
+                android:minWidth="56dp"
                 android:minHeight="48dp" />
-        </com.google.android.material.appbar.MaterialToolbar>
+        </FrameLayout>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -44,23 +49,23 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:layout_gravity="bottom"
-        app:fabAlignmentMode="center"
-        app:fabAnchorMode="cradle"
-        app:menuAlignmentMode="auto"
-        android:maxHeight="?attr/actionBarSize"
-        android:contentInsetStart="0dp"
         android:contentInsetLeft="0dp"
+        android:contentInsetStart="0dp"
+        android:fitsSystemWindows="true"
+        android:maxHeight="?attr/actionBarSize"
         app:contentInsetLeft="0dp"
         app:contentInsetStart="0dp"
-        android:fitsSystemWindows="true" />
+        app:fabAlignmentMode="center"
+        app:fabAnchorMode="cradle"
+        app:menuAlignmentMode="auto" />
 
     <me.timschneeberger.rootlessjamesdsp.view.FloatingToggleButton
         android:id="@+id/power_toggle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:layout_anchor="@id/bar"
-        app:srcCompat="@drawable/ic_twotone_power_settings_24dp"
+        android:contentDescription="@string/power_button_alt"
         android:hapticFeedbackEnabled="true"
-        android:contentDescription="@string/power_button_alt" />
+        app:layout_anchor="@id/bar"
+        app:srcCompat="@drawable/ic_twotone_power_settings_24dp" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

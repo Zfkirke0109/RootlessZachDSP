@@ -9,5 +9,5 @@
         android:contentDescription="@string/action_settings"
         android:iconTint="?attr/actionMenuTextColor"
         android:icon="@drawable/ic_twotone_settings_24dp"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
 </menu>
