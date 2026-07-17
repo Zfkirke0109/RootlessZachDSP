@@ -47,6 +47,12 @@ jobs:
           java-version: 17
           distribution: adopt
 
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;35.0.0"
+
       - name: Build release app
         if: startsWith(github.ref, 'refs/tags/')
         uses: gradle/gradle-command-action@v2
@@ -77,15 +83,70 @@ jobs:
           set -x
           echo "VERSION_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
        
-      - name: Sign APKs
-        uses: ilharp/sign-android-release@v2
-        with:
-          buildToolsVersion: 35.0.0
-          releaseDir: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          signingKey: ${{ secrets.SIGNING_KEYSTORE }}
-          keyAlias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
+      - name: Restore and validate signing keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          EXPECTED_SIGNER_SHA256: ${{ secrets.EXPECTED_SIGNER_SHA256 }}
+        run: |
+          set -euo pipefail
+          for secret in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD EXPECTED_SIGNER_SHA256; do
+            test -n "${!secret}" || { echo "::error::Required secret $secret is not configured."; exit 1; }
+          done
+
+          keystore_path="$RUNNER_TEMP/rootlesszachdsp.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+          test -s "$keystore_path" || { echo "::error::Decoded keystore is empty."; exit 1; }
+          keytool -list -keystore "$keystore_path" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+
+          actual_fingerprint="$(
+            keytool -exportcert -keystore "$keystore_path" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" \
+              | sha256sum | awk '{print toupper($1)}'
+          )"
+          expected_fingerprint="$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+          test "$actual_fingerprint" = "$expected_fingerprint" || { echo "::error::Signing certificate fingerprint mismatch."; exit 1; }
+          echo "ANDROID_SIGNING_KEYSTORE=$keystore_path" >> "$GITHUB_ENV"
+
+      - name: Sign and verify APKs
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          EXPECTED_SIGNER_SHA256: ${{ secrets.EXPECTED_SIGNER_SHA256 }}
+        run: |
+          set -euo pipefail
+          release_dir="app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          mapfile -t apks < <(find "$release_dir" -maxdepth 1 -type f -name '*.apk' ! -name '*-signed.apk' -print | sort)
+          test "${#apks[@]}" -gt 0 || { echo "::error::No APKs found to sign in $release_dir."; exit 1; }
+
+          for apk in "${apks[@]}"; do
+            signed="${apk%.apk}-signed.apk"
+            aligned="$RUNNER_TEMP/$(basename "${apk%.apk}")-aligned.apk"
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -P 16 4 "$apk" "$aligned"
+            "$apksigner" sign \
+              --ks "$ANDROID_SIGNING_KEYSTORE" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:KEYSTORE_PASSWORD \
+              --key-pass env:KEY_PASSWORD \
+              --out "$signed" "$aligned"
+            report="$RUNNER_TEMP/$(basename "$signed").apksigner.txt"
+            "$apksigner" verify --verbose --print-certs "$signed" | tee "$report"
+            actual="$(awk -F': ' '/Signer #[0-9]+ certificate SHA-256 digest:/ {print toupper($2); exit}' "$report" | tr -d '[:space:]:' )"
+            expected="$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+            test "$actual" = "$expected" || { echo "::error::Signed APK certificate mismatch."; exit 1; }
+            rm -f "$aligned"
+          done
+
+      - name: Remove signing material from runner
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/rootlesszachdsp.jks"
 
       - name: Rename build artifacts
         run: |
@@ -155,7 +216,7 @@ jobs:
           
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') && github.repository == 'timschneeb/RootlessJamesDSP'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION_TAG }}
           name: RootlessJamesDSP ${{ env.VERSION_TAG }}
