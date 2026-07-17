@@ -24,13 +24,18 @@ class AudioDiagnosticJsonTest {
             droppedEventCount = 2,
         )
 
-        assertTrue(json.startsWith("{\"schemaVersion\":1"))
+        assertTrue(json.startsWith("{\"schemaVersion\":2"))
         assertTrue(json.contains("\"eventType\":\"TRANSPORT_SNAPSHOT\""))
         assertTrue(json.contains("com.example.\\\"debug\\\""))
         assertTrue(json.contains("2.0\\nalpha"))
         assertTrue(json.contains("abc\\\\def"))
         assertTrue(json.contains("\"readSamples\":8192"))
         assertTrue(json.contains("\"writtenSamples\":8192"))
+        assertTrue(json.contains("\"processingWindowSamples\":1"))
+        assertTrue(json.contains("\"processingP50Nanos\":8000000"))
+        assertTrue(json.contains("\"processingP95Nanos\":8000000"))
+        assertTrue(json.contains("\"processingP99Nanos\":8000000"))
+        assertTrue(json.contains("\"maxDeadlineMissStreak\":0"))
         assertTrue(json.contains("\"lastRecoveryAgeMs\":0"))
         assertTrue(json.contains("\"droppedEventCount\":2"))
         assertFalse(json.contains('\n'))
@@ -95,6 +100,7 @@ class AudioDiagnosticJsonTest {
 
         assertTrue(recovery.contains("\"eventType\":\"RECOVERY\""))
         assertTrue(recovery.contains("\"reason\":\"app selection changed\""))
+        assertTrue(recovery.contains("\"processingP95Nanos\":8000000"))
         assertTrue(underrun.contains("\"eventType\":\"UNDERRUN\""))
         assertFalse(underrun.contains("\"reason\""))
     }
