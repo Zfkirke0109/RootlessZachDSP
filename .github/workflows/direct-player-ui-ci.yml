@@ -1,0 +1,155 @@
+name: Direct Player Physical Checkpoint
+
+on:
+  push:
+    branches: ["feature/direct-player-ui"]
+  pull_request:
+    branches: ["develop/direct-player-usb-foundation"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: direct-player-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+
+jobs:
+  build-and-static-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: gradle/actions/wrapper-validation@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+      - name: Unit, instrumentation compile, lint, and APK build
+        run: |
+          ./gradlew --stacktrace --console=plain \
+            testRootlessFdroidDebugUnitTest \
+            assembleRootlessFdroidDebugAndroidTest \
+            lintRootlessFdroidDebug \
+            assembleRootlessFdroidDebug
+      - name: Dependency and license evidence
+        run: |
+          mkdir -p ci-evidence
+          ./gradlew --console=plain :app:dependencies \
+            --configuration rootlessFdroidDebugRuntimeClasspath \
+            > ci-evidence/rootlessFdroidDebug-runtime-dependencies.txt
+          grep -E "androidx.media3:media3-(common|exoplayer)" \
+            ci-evidence/rootlessFdroidDebug-runtime-dependencies.txt
+      - name: Hostile static review gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence
+          git diff --name-only origin/develop/direct-player-usb-foundation...HEAD \
+            | tee ci-evidence/changed-files.txt
+          if grep -Ei '\.(aar|jar|so|dll|dylib|exe)$' ci-evidence/changed-files.txt; then
+            echo "Unexpected binary dependency in Direct Player child diff" >&2
+            exit 1
+          fi
+          if grep -RInE --exclude-dir=build --exclude='*.md' \
+            '(FileOutputStream|openFileOutput|Files\.write).*(pcm|raw audio)|media title|DISPLAY_NAME.*diagnostic' \
+            app/src/main tools 2>/dev/null; then
+            echo "Potential raw PCM/media identity persistence found" >&2
+            exit 1
+          fi
+          if grep -RInE --exclude-dir=build --exclude='*.md' \
+            '(mqa.*(decode|render).*= *true|MQA decoded|MQA rendered)' \
+            app/src/main 2>/dev/null; then
+            echo "Unsupported MQA capability claim found" >&2
+            exit 1
+          fi
+          grep -RIn "finalSystemMixMeasured" app/src/main \
+            > ci-evidence/final-system-mix-claim-audit.txt || true
+      - name: Verify package, label, signer, native libraries, and 16 KiB alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence/apk
+          APK="$(find app/build/outputs/apk/rootlessFdroid/debug -type f -name '*arm64-v8a-debug.apk' | head -n1)"
+          test -n "$APK"
+          cp "$APK" ci-evidence/apk/RootlessZachDSP-S23Ultra-direct-player-debug.apk
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          "$AAPT" dump badging "$APK" | tee ci-evidence/apk/badging.txt
+          grep -F "package: name='com.zfkirke0109.rootlesszachdsp.debug'" ci-evidence/apk/badging.txt
+          grep -F "application-label:'RootlessZachDSP'" ci-evidence/apk/badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci-evidence/apk/apksigner.txt
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK" | tee ci-evidence/apk/zipalign-16k.txt
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so' | tee ci-evidence/apk/arm64-native-libraries.txt
+          sha256sum "$APK" | tee ci-evidence/apk/SHA256SUMS.txt
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > ci-evidence/apk/manifest-tree.txt
+          grep -F 'DirectPlayerActivity' ci-evidence/apk/manifest-tree.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RootlessZachDSP-direct-player-${{ github.sha }}
+          path: ci-evidence
+          if-no-files-found: error
+          retention-days: 90
+
+  emulator-navigation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Settings and Direct Player navigation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest
