@@ -1,0 +1,148 @@
+    "    private val writerStarted = AtomicBoolean(false)\n"
+    "    private val immediateFlushScheduled = AtomicBoolean(false)\n"
+    "    private val immediateFlushRequested = AtomicBoolean(false)\n",
+)
+replace_once(
+    "app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RootlessZachDiagnostics.kt",
+    "        if (previous != null && hasImmediateEventIncrease(previous, value)) {\n"
+    "            writer.execute { flushLatestSafely() }\n"
+    "        }\n",
+    "        if (previous != null && hasImmediateEventIncrease(previous, value)) {\n"
+    "            requestImmediateFlush()\n"
+    "        }\n",
+)
+replace_once(
+    "app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RootlessZachDiagnostics.kt",
+    "    private fun flushLatestSafely() {\n",
+    r'''    private fun requestImmediateFlush() {
+        immediateFlushRequested.set(true)
+        if (!immediateFlushScheduled.compareAndSet(false, true)) return
+
+        try {
+            writer.execute {
+                try {
+                    while (immediateFlushRequested.getAndSet(false)) {
+                        flushLatestSafely()
+                    }
+                } finally {
+                    immediateFlushScheduled.set(false)
+                    if (immediateFlushRequested.get()) requestImmediateFlush()
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            immediateFlushScheduled.set(false)
+            droppedEventCount.incrementAndGet()
+            Timber.w(error, "RootlessZach diagnostics writer rejected an immediate flush")
+        }
+    }
+
+    private fun flushLatestSafely() {
+''',
+)
+
+james_path = "app/src/main/java/me/timschneeberger/rootlessjamesdsp/interop/JamesDspLocalEngine.kt"
+replace_once(
+    james_path,
+    r'''    private fun recordInt16Signal(
+        input: ShortArray,
+        output: ShortArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+        telemetry.recordShort(input, range.inputOffset, output, range.outputOffset, range.samples)
+        publishSignalIfDue(telemetry)
+    }
+
+    private fun recordFloatSignal(
+        input: FloatArray,
+        output: FloatArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+        telemetry.recordFloat(input, range.inputOffset, output, range.outputOffset, range.samples)
+        publishSignalIfDue(telemetry)
+    }
+
+    private fun publishSignalIfDue(telemetry: AudioSignalTelemetry) {
+        val now = System.nanoTime()
+        if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
+        RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
+        lastSignalPublishNanos = now
+    }
+''',
+    r'''    private fun recordInt16Signal(
+        input: ShortArray,
+        output: ShortArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val now = System.nanoTime()
+        if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+
+        telemetry.reset(now xor handle)
+        telemetry.recordShort(input, range.inputOffset, output, range.outputOffset, range.samples)
+        RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
+        lastSignalPublishNanos = now
+    }
+
+    private fun recordFloatSignal(
+        input: FloatArray,
+        output: FloatArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val now = System.nanoTime()
+        if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+
+        telemetry.reset(now xor handle)
+        telemetry.recordFloat(input, range.inputOffset, output, range.outputOffset, range.samples)
+        RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
+        lastSignalPublishNanos = now
+    }
+''',
+)
+
+telemetry_path = ROOT / "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioTransportTelemetry.kt"
+telemetry_text = telemetry_path.read_text(encoding="utf-8")
+telemetry_text = telemetry_text.replace(
+    "/** Consistent snapshots of the capture -> DSP -> output transport. */",
+    "/**\n"
+    " * Single-writer, multi-reader transport counters.\n"
+    " *\n"
+    " * The urgent audio thread is the only writer. Snapshot publication happens on a lower-priority\n"
+    " * worker and reads volatile fields without taking a monitor that could block the audio path.\n"
+    " */",
+)
+field_count = telemetry_text.count("    private var ")
+if field_count < 20:
+    raise RuntimeError(f"{telemetry_path}: unexpectedly found only {field_count} mutable telemetry fields")
+telemetry_text = telemetry_text.replace("    private var ", "    @Volatile\n    private var ")
+sync_count = telemetry_text.count("    @Synchronized\n")
+if sync_count < 8:
+    raise RuntimeError(f"{telemetry_path}: unexpectedly found only {sync_count} synchronized methods")
+telemetry_text = telemetry_text.replace("    @Synchronized\n", "")
+needle = "    fun snapshot(): Snapshot {\n"
+if telemetry_text.count(needle) != 1:
+    raise RuntimeError("AudioTransportTelemetry snapshot insertion point changed")
+telemetry_text = telemetry_text.replace(
+    needle,
+    r'''    fun currentUnderrunCount(): Int = underrunCount
+
+    fun currentDeadlineMissCount(): Long = deadlineMissCount
+
+    fun currentProcessingLoadEwma(): Double = processingLoadEwma
+
+    fun snapshot(): Snapshot {
+''',
+    1,
+)
+telemetry_path.write_text(telemetry_text, encoding="utf-8")
+
