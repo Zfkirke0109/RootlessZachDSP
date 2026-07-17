@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_direct_player">direct_player</string>
+    <string name="direct_player_title">Direct Player</string>
+    <string name="direct_player_settings_summary">Play local lossless audio and inspect Android 14+ USB bit-perfect mixer support</string>
+    <string name="direct_player_source_section">Lossless source</string>
+    <string name="direct_player_truthful_summary">This separate player owns the original source. It does not make the system-wide playback-capture path bit-perfect, and it bypasses RootlessZachDSP effects while USB bit-perfect mode is requested.</string>
+    <string name="direct_player_choose_audio">Choose local audio</string>
+    <string name="direct_player_no_source">No source selected</string>
+    <string name="direct_player_play">Play</string>
+    <string name="direct_player_pause">Pause</string>
+    <string name="direct_player_playing">Playing with unity player volume</string>
+    <string name="direct_player_ready">Ready</string>
+    <string name="direct_player_error">Playback error: %1$s</string>
+    <string name="direct_player_source_error">Unable to inspect source: %1$s</string>
+    <string name="direct_player_source_format">%1$d Hz · %2$d channels · %3$s-bit · %4$s\n%5$s</string>
+    <string name="direct_player_high_res_lossless">High-resolution lossless source</string>
+    <string name="direct_player_lossless">Lossless source</string>
+    <string name="direct_player_unverified_format">Format is not verified as lossless</string>
+    <string name="direct_player_unknown">unknown</string>
+    <string name="direct_player_usb_section">USB output</string>
+    <string name="direct_player_usb_toggle">Request exact public USB bit-perfect mixer</string>
+    <string name="direct_player_choose_source_first">Choose and inspect a source first.</string>
+    <string name="direct_player_no_usb">No external USB audio output is connected.</string>
+    <string name="direct_player_usb_disconnected">The active USB route disconnected. Preferred mixer attributes were cleared.</string>
+    <string name="direct_player_none_reported">No mixer formats reported</string>
+    <string name="direct_player_usb_summary">USB outputs: %1$d\nConfigurable mixers: %2$d\nBit-perfect mixers: %3$d\n%4$s</string>
+    <string name="direct_player_usb_verified">Android verified an exact preferred mixer for %1$s: %2$d Hz, %3$d channels, %4$s-bit PCM. DSP, fades, gain changes, and player volume changes are disabled. End-to-end DAC bit identity still requires external validation.</string>
+    <string name="direct_player_usb_rejected">Not enabled (%1$s): %2$s</string>
+    <string name="direct_player_mqa_section">MQA status</string>
+    <string name="direct_player_mqa_unavailable">No standardized trusted MQA carrier metadata was reported. No MQA decoder is shipped.</string>
+    <string name="direct_player_mqa_plugin_missing">An MQA carrier was reported by trusted metadata, but no lawfully licensed decoder plug-in is installed. Carrier passthrough may be possible; no unfold or rendering is claimed.</string>
+    <string name="direct_player_mqa_authorized_decoder_active">An authorized decoder reports an active first unfold. Post-decoder PCM is not bit-identical to the original carrier.</string>
+</resources>
