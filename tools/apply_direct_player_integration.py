@@ -134,4 +134,14 @@ class SettingsFragment : SettingsBaseFragment() {
 ''',
 )
 
+for path in (
+    "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/direct/DirectPcmPlaybackEngine.kt",
+    "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/direct/DirectSourceInspector.kt",
+):
+    replace_once(
+        path,
+        "MediaFormat.METADATA_KEY_BITS_PER_SAMPLE",
+        '"bits-per-sample"',
+    )
+
 print("Direct Player app integration applied")
