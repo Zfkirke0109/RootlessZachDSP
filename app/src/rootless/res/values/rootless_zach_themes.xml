@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="rootless_zach_splash_background">#05030D</color>
+    <color name="rootless_zach_splash_icon_background">#0B0718</color>
+
+    <style name="Theme.RootlessZachDSP" parent="@style/Theme.RootlessJamesDSP" />
+
+    <style name="Theme.RootlessZachDSP.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/rootless_zach_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_dsp_launcher</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/rootless_zach_splash_icon_background</item>
+        <item name="postSplashScreenTheme">@style/Theme.RootlessZachDSP</item>
+    </style>
+</resources>
