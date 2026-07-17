@@ -3,15 +3,17 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:icon="@mipmap/ic_dsp_launcher"
-        android:roundIcon="@mipmap/ic_dsp_launcher"
+        android:icon="@mipmap/ic_rootless_zach_launcher"
+        android:roundIcon="@mipmap/ic_rootless_zach_launcher"
         android:theme="@style/Theme.RootlessZachDSP"
         tools:replace="android:icon,android:roundIcon,android:theme">
 
         <activity
             android:name=".activity.MainActivity"
+            android:icon="@mipmap/ic_rootless_zach_launcher"
+            android:label="@string/jamesdsp"
             android:theme="@style/Theme.RootlessZachDSP.Starting"
-            tools:replace="android:theme" />
+            tools:replace="android:icon,android:label,android:theme" />
 
         <service
             android:name=".service.QuickTileService"
