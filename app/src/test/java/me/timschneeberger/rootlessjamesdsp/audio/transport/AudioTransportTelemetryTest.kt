@@ -68,6 +68,7 @@ class AudioTransportTelemetryTest {
     private fun successfulTransfer(samples: Int) = AudioTransferResult(
         requestedSamples = samples,
         transferredSamples = samples,
+        operationCount = 1,
         partialOperationCount = 0,
         zeroProgressCount = 0,
         errorCode = null,
