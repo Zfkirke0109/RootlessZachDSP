@@ -83,6 +83,14 @@ jobs:
           fi
           exit "$status"
 
+      - name: Upload guarded patch log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: realtime-patch-log-${{ github.run_id }}
+          if-no-files-found: warn
+          path: checkpoint-apply.log
+
       - name: Persist concise patch failure evidence
         if: steps.apply_patch.outcome == 'failure'
         shell: bash
