@@ -1,5 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.audio.transport
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,5 +21,43 @@ class AudioTransportTelemetryTest {
         val stale = telemetry.snapshot().compactString()
         assertFalse(stale.contains("recoveryReason="))
         assertTrue(stale.contains("recoveryAgeMs=11000"))
+    }
+
+    @Test
+    fun `processing window reports nearest-rank percentiles and deadline streaks`() {
+        val telemetry = AudioTransportTelemetry()
+        telemetry.configure(48_000, 2, 3_072)
+
+        for (millis in 1L..100L) {
+            telemetry.recordProcessing(
+                durationNanos = millis * 1_000_000L,
+                deadlineNanos = 50_000_000L,
+                bypassed = false,
+            )
+        }
+
+        val snapshot = telemetry.snapshot()
+        assertEquals(100, snapshot.processingWindowSamples)
+        assertEquals(50_000_000L, snapshot.processingP50Nanos)
+        assertEquals(95_000_000L, snapshot.processingP95Nanos)
+        assertEquals(99_000_000L, snapshot.processingP99Nanos)
+        assertEquals(50L, snapshot.deadlineMissCount)
+        assertEquals(50, snapshot.currentConsecutiveDeadlineMisses)
+        assertEquals(50, snapshot.maxConsecutiveDeadlineMisses)
+        assertTrue(snapshot.compactString().contains("processP95Ns=95000000"))
+    }
+
+    @Test
+    fun `reconfiguration resets active processing window`() {
+        val telemetry = AudioTransportTelemetry()
+        telemetry.configure(48_000, 2, 3_072)
+        telemetry.recordProcessing(40_000_000L, 32_000_000L, bypassed = false)
+        assertEquals(1, telemetry.snapshot().processingWindowSamples)
+
+        telemetry.configure(48_000, 2, 6_144)
+        val reset = telemetry.snapshot()
+        assertEquals(0, reset.processingWindowSamples)
+        assertEquals(0, reset.currentConsecutiveDeadlineMisses)
+        assertEquals(0, reset.maxConsecutiveDeadlineMisses)
     }
 }
