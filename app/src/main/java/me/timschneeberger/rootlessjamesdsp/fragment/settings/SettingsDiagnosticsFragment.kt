@@ -56,7 +56,8 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
 
     private fun refreshStatus() {
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
-        val signal = RootlessZachDiagnostics.latestSignalSnapshot()
+        val engineSignal = RootlessZachDiagnostics.latestSignalSnapshot()
+        val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
         val file = RootlessZachDiagnostics.latestDiagnosticsFile()
         val recentCount = RootlessZachDiagnostics.readRecentLines(200).size
         findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
@@ -65,16 +66,25 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
             } else {
                 buildString {
                     append(transport.compactString())
-                    if (signal != null) {
-                        append("\ndspEngineSamples=").append(signal.sampleCount)
-                        append(" dspEngineOutputChanged=").append(signal.outputChanged)
-                        append(" changedRatio=").append(signal.changedSampleRatio)
-                        append(" dryInputRms=").append(signal.inputRms)
-                        append(" dspEngineOutputRms=").append(signal.outputRms)
-                        append(" finalAudioTrackMixMeasured=false")
+                    if (engineSignal != null) {
+                        append("\ndspEngineSamples=").append(engineSignal.sampleCount)
+                        append(" dspEngineOutputChanged=").append(engineSignal.outputChanged)
+                        append(" changedRatio=").append(engineSignal.changedSampleRatio)
+                        append(" dryInputRms=").append(engineSignal.inputRms)
+                        append(" dspEngineOutputRms=").append(engineSignal.outputRms)
                     } else {
                         append("\ndspEngineSignal=not-connected-yet")
                     }
+                    if (trackInputSignal != null) {
+                        append("\ntrackInputSamples=").append(trackInputSignal.sampleCount)
+                        append(" trackInputChanged=").append(trackInputSignal.outputChanged)
+                        append(" trackInputChangedRatio=").append(trackInputSignal.changedSampleRatio)
+                        append(" audioTrackInputRms=").append(trackInputSignal.outputRms)
+                    } else {
+                        append("\ntrackInputSignal=not-connected-yet")
+                    }
+                    append(" finalAudioTrackMixMeasured=").append(trackInputSignal != null)
+                    append(" finalSystemMixMeasured=false")
                     append("\nstructuredEvents=").append(recentCount)
                     append(" activeBytes=").append(file?.takeIf { it.exists() }?.length() ?: 0L)
                 }
@@ -102,7 +112,8 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
             showPrivacyBlock(findings)
             return
         }
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipboard =
+            requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(
             ClipData.newPlainText(getString(R.string.rootless_zach_diagnostics_title), report),
         )
@@ -157,13 +168,21 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
             .show()
     }
 
-    private fun buildRedactedBundle(): String = buildString {
-        appendLine(getString(R.string.rootless_zach_diagnostics_preview_header))
-        appendLine()
-        appendLine(CompatibilityDiagnosticsReport.build(requireContext()))
-        appendLine()
-        appendLine("[Recent structured events]")
-        RootlessZachDiagnostics.readRecentLines(MAX_EXPORT_EVENT_LINES).forEach(::appendLine)
+    private fun buildRedactedBundle(): String {
+        val events = RootlessZachDiagnostics.readRecentLines(MAX_EXPORT_EVENT_LINES)
+        return buildString {
+            appendLine(getString(R.string.rootless_zach_diagnostics_preview_header))
+            appendLine()
+            appendLine(
+                CompatibilityDiagnosticsReport.build(
+                    context = requireContext(),
+                    recentStructuredEventCount = events.size,
+                ),
+            )
+            appendLine()
+            appendLine("[Recent structured events]")
+            events.forEach(::appendLine)
+        }
     }
 
     private fun shareBundle(bundle: String) {
