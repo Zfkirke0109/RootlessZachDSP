@@ -128,3 +128,10 @@ append_once(
   background publication, lock-free single-writer transport counters, and buffered JSONL batches.
 - Required CI: `testRootlessFdroidDebugUnitTest`, `lintRootlessFdroidDebug`,
   `assembleRootlessFdroidDebug`, package/signature/16 KiB alignment verification, and SHA-256.
+- Physical status: blocked on installation and testing on the Galaxy S23 Ultra.
+- Next checkpoint after device evidence: startup-priming versus runtime-starvation accounting and
+  allocation-free per-stage DSP timing exported from the native engine.
+''',
+)
+
+print("Applied RootlessZachDSP real-time audio checkpoint")
