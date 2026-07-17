@@ -17,19 +17,29 @@ class AudioTransportTelemetryScopeTest {
         var snapshot = telemetry.snapshot()
         assertEquals(0L, snapshot.recoveryCount)
         assertEquals(1L, snapshot.reconfigurationCount)
-        assertEquals(3, snapshot.underrunCount)
+        assertEquals(0, snapshot.underrunCount)
         assertEquals(3, snapshot.activeTrackUnderrunCount)
         assertEquals(1, snapshot.trackGeneration)
         assertTrue(snapshot.compactString().contains("reconfigurationReason=capture policy changed"))
+
+        telemetry.recordActiveTrackUnderrunCount(5)
+        snapshot = telemetry.snapshot()
+        assertEquals(2, snapshot.underrunCount)
+        assertEquals(5, snapshot.activeTrackUnderrunCount)
 
         now += 1_000_000L
         telemetry.configure(48_000, 2, 16_384)
         telemetry.recordActiveTrackUnderrunCount(2)
         snapshot = telemetry.snapshot()
 
-        assertEquals(5, snapshot.underrunCount)
+        assertEquals(2, snapshot.underrunCount)
         assertEquals(2, snapshot.activeTrackUnderrunCount)
         assertEquals(2, snapshot.trackGeneration)
+
+        telemetry.recordActiveTrackUnderrunCount(4)
+        snapshot = telemetry.snapshot()
+        assertEquals(4, snapshot.underrunCount)
+        assertEquals(4, snapshot.activeTrackUnderrunCount)
     }
 
     @Test
