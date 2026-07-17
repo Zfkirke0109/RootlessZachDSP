@@ -68,15 +68,28 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          awk '
-            /PATCH_GZIP_BASE64: \|/ { capture=1; next }
-            capture && /^        run: \|/ { capture=0 }
-            capture { sub(/^            /, ""); print }
-          ' .github/workflows/realtime-audio-checkpoint.yml \
-            | tr -d '[:space:]' \
-            | base64 --decode \
-            | gzip --decompress \
-            > "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import gzip
+          import os
+
+          workflow = Path('.github/workflows/realtime-audio-checkpoint.yml').read_text(encoding='utf-8').splitlines()
+          marker = '          PATCH_GZIP_BASE64: |'
+          start = workflow.index(marker) + 1
+          payload = []
+          for line in workflow[start:]:
+              if not line.startswith('            '):
+                  break
+              payload.append(line[12:].strip())
+          if not payload:
+              raise RuntimeError('Embedded real-time checkpoint payload is empty')
+          compressed = base64.b64decode(''.join(payload), validate=True)
+          script = gzip.decompress(compressed)
+          target = Path(os.environ['RUNNER_TEMP']) / 'apply_realtime_checkpoint.py'
+          target.write_bytes(script)
+          print(f'Extracted guarded patch script: {len(script)} bytes')
+          PY
           sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' "$RUNNER_TEMP/apply_realtime_checkpoint.py"
           python3 "$RUNNER_TEMP/apply_realtime_checkpoint.py" 2>&1 | tee "$GITHUB_WORKSPACE/checkpoint-apply.log"
           status=${PIPESTATUS[0]}
@@ -97,7 +110,7 @@ jobs:
             if [ -f checkpoint-apply.log ]; then
               tail -n 80 checkpoint-apply.log
             else
-              echo 'checkpoint-apply.log was not created; failure occurred before the Python patch command.'
+              echo 'checkpoint-apply.log was not created; failure occurred before the guarded Python patch command.'
             fi
             echo 'RZDSP_PATCH_ERROR'
           } >> "$GITHUB_OUTPUT"
