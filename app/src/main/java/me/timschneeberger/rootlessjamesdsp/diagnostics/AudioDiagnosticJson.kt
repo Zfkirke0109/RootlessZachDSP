@@ -36,7 +36,7 @@ internal object AudioDiagnosticJson {
         engineEpoch: String,
         wallClockEpochMs: Long,
         droppedEventCount: Long,
-    ): String = buildString(760) {
+    ): String = buildString(840) {
         beginEnvelope(
             type = AudioDiagnosticEventType.TRANSPORT_SNAPSHOT,
             capturedAtNanos = snapshot.capturedAtNanos,
@@ -58,7 +58,10 @@ internal object AudioDiagnosticJson {
         number("underruns", snapshot.underrunCount)
         number("epochUnderrunDelta", snapshot.underrunCount)
         number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
+        number("startupPrimingUnderruns", snapshot.startupPrimingUnderrunCount)
+        number("runtimeStarvationUnderruns", snapshot.runtimeStarvationUnderrunCount)
         number("trackGeneration", snapshot.trackGeneration)
+        number("activeTrackWrittenSamples", snapshot.activeTrackWrittenSamples)
         number("deadlineMisses", snapshot.deadlineMissCount)
         number("bypassBuffers", snapshot.bypassBufferCount)
         number("lastProcessingNanos", snapshot.lastProcessingNanos)
@@ -113,7 +116,7 @@ internal object AudioDiagnosticJson {
         build: DiagnosticBuildIdentity,
         engineEpoch: String,
         wallClockEpochMs: Long,
-    ): String = buildString(420) {
+    ): String = buildString(500) {
         require(
             type != AudioDiagnosticEventType.TRANSPORT_SNAPSHOT &&
                 type != AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
@@ -131,7 +134,10 @@ internal object AudioDiagnosticJson {
         number("underruns", snapshot.underrunCount)
         number("epochUnderrunDelta", snapshot.underrunCount)
         number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
+        number("startupPrimingUnderruns", snapshot.startupPrimingUnderrunCount)
+        number("runtimeStarvationUnderruns", snapshot.runtimeStarvationUnderrunCount)
         number("trackGeneration", snapshot.trackGeneration)
+        number("activeTrackWrittenSamples", snapshot.activeTrackWrittenSamples)
         number("deadlineMisses", snapshot.deadlineMissCount)
         number("ioErrors", snapshot.ioErrorCount)
         number("bypassBuffers", snapshot.bypassBufferCount)
@@ -151,6 +157,14 @@ internal object AudioDiagnosticJson {
                 val nearExpectedReconfiguration =
                     reconfigurationAgeMs(snapshot)?.let { it <= RECONFIGURATION_ASSOCIATION_WINDOW_MS } == true
                 boolean("nearExpectedReconfiguration", nearExpectedReconfiguration)
+                string(
+                    "classification",
+                    if (snapshot.activeTrackWrittenSamples < snapshot.bufferSamples.toLong() * 2L) {
+                        "STARTUP_PRIMING"
+                    } else {
+                        "RUNTIME_STARVATION"
+                    },
+                )
             }
             else -> Unit
         }

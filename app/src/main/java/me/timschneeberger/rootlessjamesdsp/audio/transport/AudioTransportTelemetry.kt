@@ -3,6 +3,7 @@ package me.timschneeberger.rootlessjamesdsp.audio.transport
 import java.util.Locale
 
 private const val EVENT_REASON_LOG_WINDOW_MS = 10_000L
+private const val STARTUP_PRIMING_BUFFERS = 2L
 
 /**
  * Single-writer, multi-reader transport counters.
@@ -35,6 +36,9 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         val reconfigurationCount: Long = 0L,
         val activeTrackUnderrunCount: Int = 0,
         val trackGeneration: Int = 0,
+        val startupPrimingUnderrunCount: Int = 0,
+        val runtimeStarvationUnderrunCount: Int = 0,
+        val activeTrackWrittenSamples: Long = 0L,
         val lastReconfigurationReason: String? = null,
         val lastReconfigurationAtNanos: Long? = null,
     ) {
@@ -54,7 +58,10 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
             append(" underruns=").append(underrunCount)
             append(" epochUnderrunDelta=").append(underrunCount)
             append(" activeTrackUnderruns=").append(activeTrackUnderrunCount)
+            append(" startupPrimingUnderruns=").append(startupPrimingUnderrunCount)
+            append(" runtimeStarvationUnderruns=").append(runtimeStarvationUnderrunCount)
             append(" trackGeneration=").append(trackGeneration)
+            append(" activeTrackWrittenSamples=").append(activeTrackWrittenSamples)
             append(" deadlineMisses=").append(deadlineMissCount)
             append(" bypassBuffers=").append(bypassBufferCount)
             append(" processNs=").append(lastProcessingNanos)
@@ -108,6 +115,12 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     @Volatile
     private var activeTrackUnderrunCount = 0
     @Volatile
+    private var startupPrimingUnderrunCount = 0
+    @Volatile
+    private var runtimeStarvationUnderrunCount = 0
+    @Volatile
+    private var activeTrackWrittenSamples = 0L
+    @Volatile
     private var trackGeneration = 0
     @Volatile
     private var deadlineMissCount = 0L
@@ -136,6 +149,7 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         bufferSamples = samples
         trackGeneration++
         activeTrackUnderrunCount = 0
+        activeTrackWrittenSamples = 0L
     }
 
     fun recordRead(result: AudioTransferResult) {
@@ -150,6 +164,7 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
 
     fun recordWrite(result: AudioTransferResult) {
         totalWrittenSamples += result.transferredSamples
+        activeTrackWrittenSamples += result.transferredSamples
         partialWriteOperations += result.partialOperationCount
         zeroProgressOperations += result.zeroProgressCount
         result.errorCode?.let {
@@ -167,10 +182,21 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         processingLoadEwma = if (processingLoadEwma == 0.0) ratio else processingLoadEwma * 0.9 + ratio * 0.1
     }
 
-    /** Records the monotonic underrun counter belonging to the currently active AudioTrack. */
+    /**
+     * Records the monotonic underrun counter belonging to the currently active AudioTrack.
+     *
+     * Android frequently reports one or more underruns while a newly created track is being primed.
+     * Keep those separate from starvation that occurs after at least two complete application
+     * buffers have been written to the current track generation.
+     */
     fun recordActiveTrackUnderrunCount(currentCount: Int) {
         val safeCurrent = currentCount.coerceAtLeast(0)
-        underrunCount += (safeCurrent - activeTrackUnderrunCount).coerceAtLeast(0)
+        val delta = (safeCurrent - activeTrackUnderrunCount).coerceAtLeast(0)
+        if (delta > 0) {
+            underrunCount += delta
+            if (isTrackStillPriming()) startupPrimingUnderrunCount += delta
+            else runtimeStarvationUnderrunCount += delta
+        }
         activeTrackUnderrunCount = safeCurrent
     }
 
@@ -179,6 +205,8 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         val safeDelta = delta.coerceAtLeast(0)
         underrunCount += safeDelta
         activeTrackUnderrunCount += safeDelta
+        if (isTrackStillPriming()) startupPrimingUnderrunCount += safeDelta
+        else runtimeStarvationUnderrunCount += safeDelta
     }
 
     fun recordRecovery(reason: String) {
@@ -225,8 +253,16 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
             reconfigurationCount = reconfigurationCount,
             activeTrackUnderrunCount = activeTrackUnderrunCount,
             trackGeneration = trackGeneration,
+            startupPrimingUnderrunCount = startupPrimingUnderrunCount,
+            runtimeStarvationUnderrunCount = runtimeStarvationUnderrunCount,
+            activeTrackWrittenSamples = activeTrackWrittenSamples,
             lastReconfigurationReason = lastReconfigurationReason,
             lastReconfigurationAtNanos = lastReconfigurationAtNanos,
         )
+    }
+
+    private fun isTrackStillPriming(): Boolean {
+        val threshold = bufferSamples.toLong().coerceAtLeast(1L) * STARTUP_PRIMING_BUFFERS
+        return activeTrackWrittenSamples < threshold
     }
 }
