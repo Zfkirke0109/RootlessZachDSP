@@ -30,7 +30,7 @@ object DirectSourceInspector {
             val mime = trackFormat.getString(MediaFormat.KEY_MIME)
             val sampleRate = trackFormat.optionalPositiveInt(MediaFormat.KEY_SAMPLE_RATE)
             val channelCount = trackFormat.optionalPositiveInt(MediaFormat.KEY_CHANNEL_COUNT)
-            val bitDepth = trackFormat.optionalPositiveInt(MediaFormat.METADATA_KEY_BITS_PER_SAMPLE)
+            val bitDepth = trackFormat.optionalPositiveInt("bits-per-sample")
                 ?: bitDepthForEncoding(trackFormat.optionalPositiveInt(MediaFormat.KEY_PCM_ENCODING))
             val encoding = resolvePcmEncoding(mime, trackFormat, bitDepth)
             val channelMask = channelMask(channelCount)
