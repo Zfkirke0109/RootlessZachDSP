@@ -106,6 +106,12 @@ object RootlessZachDiagnostics {
         val current = transportSnapshot.get() ?: return
         val currentSignal = signalSnapshot.get()
         val previous = lastPersistedTransportSnapshot
+
+        // The writer remains alive for the application process. Once audio processing stops, the
+        // latest atomic snapshots intentionally remain available to the report UI, but they must
+        // not be appended again every five seconds with only a newer wall-clock timestamp.
+        if (previous?.capturedAtNanos == current.capturedAtNanos) return
+
         val droppedBeforeWrite = droppedEventCount.get()
         val nowMs = System.currentTimeMillis()
         val epoch = engineEpoch
