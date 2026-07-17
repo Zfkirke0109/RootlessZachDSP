@@ -80,11 +80,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p ci-evidence
           ./gradlew --stacktrace --console=plain \
             testRootlessFdroidDebugUnitTest \
             assembleRootlessFdroidDebugAndroidTest \
             lintRootlessFdroidDebug \
-            assembleRootlessFdroidDebug
+            assembleRootlessFdroidDebug \
+            2>&1 | tee ci-evidence/gradle-build.log
 
       - name: Verify package, monotonic version, persistent signer, icon, and splash
         shell: bash
@@ -154,6 +156,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: RootlessZachDSP-packaging-branding-${{ github.sha }}
           path: |
