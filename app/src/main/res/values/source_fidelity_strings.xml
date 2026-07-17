@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_diagnostics_source_fidelity" translatable="false">diagnostics_source_fidelity</string>
+    <string name="rootless_zach_source_fidelity_title">Source fidelity &amp; headroom</string>
+    <string name="rootless_zach_source_fidelity_summary">Inspect current AudioTrack-input peak headroom and truthful MQA integration status</string>
+    <string name="rootless_zach_source_fidelity_dialog_title">Source fidelity checkpoint</string>
+</resources>

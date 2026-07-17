@@ -29,6 +29,8 @@ object CompatibilityDiagnosticsReport {
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
         val engineSignal = RootlessZachDiagnostics.latestSignalSnapshot()
         val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
+        val sourceFidelity = SourceFidelityAssessment.assess(trackInputSignal?.outputPeak)
+        val mqaStatus = SourceFidelityAssessment.mqaStatus()
         val diagnosticsFile = RootlessZachDiagnostics.latestDiagnosticsFile()
         val countedRecentStructuredEvents =
             recentStructuredEventCount
@@ -116,9 +118,17 @@ object CompatibilityDiagnosticsReport {
             appendLine("usbConfigurableMixerCount=${usbMixerCapabilities.configurableMixerCount}")
             appendLine("usbBitPerfectMixerSupported=${usbMixerCapabilities.bitPerfectSupported}")
             appendLine("usbMixerFormats=${usbMixerCapabilities.formats.ifEmpty { "none-reported" }}")
-            appendLine("mqaDecoderIncluded=false")
-            appendLine("mqaPassthrough=false")
-            appendLine("mqaNote=Any licensed source-side decode must happen before PCM capture")
+            appendLine("mqaDecoderIncluded=${mqaStatus.decoderIncluded}")
+            appendLine("mqaRendererIncluded=${mqaStatus.rendererIncluded}")
+            appendLine("mqaPassthrough=${mqaStatus.passthroughClaimed}")
+            appendLine("mqaCarrierDetected=${mqaStatus.carrierDetected}")
+            appendLine("mqaSourceAuthenticationObservable=${mqaStatus.sourceAuthenticationObservable}")
+            appendLine("mqaIntegrationState=${mqaStatus.integrationState}")
+            appendLine("mqaLegalGate=${mqaStatus.nextLegalStep}")
+            appendLine(
+                "mqaNote=Any lawfully licensed source-side decode must happen before PCM capture; " +
+                    "post-capture PCM cannot prove MQA authentication or rendering",
+            )
             appendLine(
                 "dolbyAtmosCompatibility=media attributes preserved; final system effect policy " +
                     "remains controlled by Samsung",
@@ -134,6 +144,15 @@ object CompatibilityDiagnosticsReport {
             appendLine(
                 "recommendedValidation=Compare Atmos off/on/auto per speaker, Bluetooth, and USB " +
                     "route while watching clipping and underruns",
+            )
+            appendLine()
+            appendLine("[Source fidelity and headroom]")
+            appendLine("measurementBoundary=ROOTLESS_AUDIO_TRACK_INPUT_CURRENT_TELEMETRY_WINDOW")
+            appendLine(sourceFidelity.compactString())
+            appendLine("recommendedTargetPeakDbfs=-2.00")
+            appendLine(
+                "headroomNote=The recommendation only reduces RootlessZachDSP preamp; it does not " +
+                    "measure or control Samsung processing after AudioTrack input",
             )
             appendLine()
             appendLine("[Rootless transport]")

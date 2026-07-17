@@ -1,0 +1,158 @@
+name: Source Fidelity and Headroom
+
+on:
+  push:
+    branches: ["feature/source-fidelity-headroom"]
+  pull_request:
+    branches: ["fix/packaging-branding-checkpoint"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-fidelity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+  KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+  EXPECTED_SIGNER_SHA256: ${{ secrets.EXPECTED_SIGNER_SHA256 }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize permanent test signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          for secret_name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD EXPECTED_SIGNER_SHA256; do
+            test -n "${!secret_name:-}" || {
+              echo "Missing required GitHub Actions secret: $secret_name" >&2
+              exit 1
+            }
+          done
+          KEYSTORE_PATH="$RUNNER_TEMP/rootlesszachdsp.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "ROOTLESS_TEST_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((200000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+
+      - name: Unit tests, instrumentation compile, lint, and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence
+          ./gradlew --stacktrace --console=plain \
+            testRootlessFdroidDebugUnitTest \
+            assembleRootlessFdroidDebugAndroidTest \
+            lintRootlessFdroidDebug \
+            assembleRootlessFdroidDebug \
+            2>&1 | tee ci-evidence/gradle-build.log
+
+      - name: Verify lawful claims, scripts, package, signer, and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence/apk
+          APK="$(find app/build/outputs/apk/rootlessFdroid/debug -type f -name '*arm64-v8a-debug.apk' | head -n1)"
+          test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+
+          "$AAPT" dump badging "$APK" | tee ci-evidence/apk/badging.txt
+          grep -F "package: name='com.zfkirke0109.rootlesszachdsp.debug'" ci-evidence/apk/badging.txt
+          grep -F "application-label:'RootlessZachDSP'" ci-evidence/apk/badging.txt
+          grep -F 'ic_rootless_zach_launcher' ci-evidence/apk/badging.txt
+          if grep -F 'application-icon-' ci-evidence/apk/badging.txt | grep -F 'ic_dsp_launcher'; then
+            echo "Upstream debug icon still selected" >&2
+            exit 1
+          fi
+
+          BUILT_VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" ci-evidence/apk/badging.txt | head -n1)"
+          test "$BUILT_VERSION_CODE" -eq "$VERSION_CODE"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci-evidence/apk/apksigner.txt
+          EXPECTED="$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d '[:space:]:-' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ci-evidence/apk/apksigner.txt | head -n1 | tr -d '[:space:]:-' | tr '[:upper:]' '[:lower:]')"
+          test "$ACTUAL" = "$EXPECTED"
+
+          grep -F 'AUTHORIZED_MODULE_NOT_INSTALLED' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
+          grep -F 'decoderIncluded: Boolean = false' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
+          grep -F 'rendererIncluded: Boolean = false' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
+          grep -F 'finalSystemMixMeasured: Boolean = false' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
+
+          if find app -type f \( -iname '*mqa*.so' -o -iname '*mqa*.aar' -o -iname '*mqa*.jar' -o -iname '*mqa*.bin' \) | grep -q .; then
+            echo "Unexpected MQA binary/library file detected" >&2
+            exit 1
+          fi
+          if git grep -Ei 'System\.loadLibrary\([^)]*mqa|implementation[^[:space:]]*.*mqa' -- app; then
+            echo "Unexpected MQA runtime or dependency integration detected" >&2
+            exit 1
+          fi
+          if git ls-files | grep -Ei '\.(jks|keystore|p12|pfx)$'; then
+            echo "Private signing material is tracked" >&2
+            exit 1
+          fi
+
+          command -v pwsh >/dev/null
+          pwsh -NoProfile -NonInteractive -Command \
+            '$ErrorActionPreference="Stop"; [void][scriptblock]::Create((Get-Content -LiteralPath "tools/adb/Collect-RootlessZachDspEvidence.ps1" -Raw)); [void][scriptblock]::Create((Get-Content -LiteralPath "tools/adb/Install-Verify-RootlessZachDsp.ps1" -Raw))'
+
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK" | tee ci-evidence/apk/zipalign-16k.txt
+          sha256sum "$APK" | tee ci-evidence/apk/SHA256SUMS.txt
+          cp "$APK" ci-evidence/apk/RootlessZachDSP-S23Ultra-source-fidelity-debug.apk
+          cp tools/adb/*.ps1 ci-evidence/
+          cp docs/audio/MQA_INTEGRATION_GATE_20260717.md ci-evidence/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RootlessZachDSP-source-fidelity-${{ github.sha }}
+          path: |
+            ci-evidence/**
+            app/build/reports/tests/testRootlessFdroidDebugUnitTest/**
+            app/build/reports/lint-results-*
+          if-no-files-found: error
+          retention-days: 90
