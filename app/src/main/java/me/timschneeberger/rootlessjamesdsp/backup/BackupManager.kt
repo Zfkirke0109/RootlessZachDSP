@@ -21,9 +21,11 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class BackupManager(private val context: Context): KoinComponent {
     private val preferences: Preferences.App by inject()
@@ -108,71 +110,213 @@ class BackupManager(private val context: Context): KoinComponent {
     fun restoreBackup(uri: Uri, dirty: Boolean) {
         Timber.d("Restoring backup from $uri")
 
-        context.contentResolver.openInputStream(uri)!!.source().gzip().buffer().inputStream().use { stream ->
-            val targetFolder = File(context.cacheDir, "restore")
-            val metadata = Tar.Reader(stream, ::isKnownFile).extract(targetFolder)
+        val targetFolder = File(context.cacheDir, "restore-${UUID.randomUUID()}")
+        try {
+            val metadata = context.contentResolver.openInputStream(uri)
+                ?.source()
+                ?.gzip()
+                ?.buffer()
+                ?.inputStream()
+                ?.use { stream -> Tar.Reader(stream, ::isKnownFile).extract(targetFolder) }
+
             if(metadata == null) {
-                targetFolder.deleteRecursively()
                 throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
             }
 
-            if(BuildConfig.VERSION_CODE < (metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0)) {
-                targetFolder.deleteRecursively()
+            // Early RootlessJamesDSP backups used minVersionCode and did not include is_backup.
+            // Preserve that compatibility, while rejecting archives explicitly marked as non-backups.
+            if (isExplicitNonBackup(metadata)) {
+                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
+            }
+
+            if (!targetFolder.walkTopDown().any { it.isFile }) {
+                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
+            }
+
+            val minimumVersionCode = getMinimumVersionCode(metadata)
+            if(BuildConfig.VERSION_CODE < minimumVersionCode) {
                 throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_version_too_new))
             }
 
-            // Clean restore
-            if(!dirty) {
-                // Remove profiles
-                File(context.applicationInfo.dataDir + "/files/profiles").deleteRecursively()
-
-                // Remove shared dsp prefs
-                File(context.applicationInfo.dataDir + "/shared_prefs").listFiles { file: File ->
-                    file.name.startsWith("dsp_") && file.extension == "xml"
-                }?.forEach { it.delete() }
-                // Remove external files
-                context.getExternalFilesDir(null)
-                    ?.absoluteFile
-                    ?.listFiles()
-                    ?.forEach { it.deleteRecursively() }
-            }
-
-            var enableDeviceProfiles = false
-            targetFolder.listFiles()?.forEach { file ->
-                if(file.isDirectory && file.name == "shared_prefs")
-                    file.copyRecursively(File(context.applicationInfo.dataDir + "/shared_prefs"), true)
-                else if(file.isDirectory && file.name == "profiles") {
-                    enableDeviceProfiles = true
-                    file.copyRecursively(
-                        File(context.applicationInfo.dataDir + "/files/profiles"),
-                        true
-                    )
-                }
-                else if(file.isDirectory && FileLibraryPreference.types.any { file.name.startsWith(it.key) }) {
-                    file.copyRecursively(File(context.getExternalFilesDir(null)!!.absolutePath + "/" + file.name), true)
-                }
-            }
-
-            targetFolder.deleteRecursively()
-
-            context.broadcastPresetLoadEvent()
-            context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
+            val enableDeviceProfiles = applyRestoredFiles(targetFolder, dirty)
 
             if(enableDeviceProfiles)
                 preferences.set(R.string.key_device_profiles_enable, true)
+            else if(!dirty)
+                preferences.set(R.string.key_device_profiles_enable, false)
+
+            context.broadcastPresetLoadEvent()
+            context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
+        } finally {
+            targetFolder.deleteRecursively()
         }
+    }
+
+    /**
+     * Applies a validated staging tree while preserving a rollback copy of the current DSP data.
+     * A failed clean or merge restore therefore cannot be reported as successful with partially
+     * deleted preferences, profiles, or library files.
+     */
+    private fun applyRestoredFiles(stagingRoot: File, dirty: Boolean): Boolean {
+        val sharedPreferences = File(context.applicationInfo.dataDir, "shared_prefs")
+        val deviceProfiles = File(context.applicationInfo.dataDir, "files/profiles")
+        val externalFiles = context.getExternalFilesDir(null)
+            ?: throw IOException("External app storage is unavailable")
+
+        val rollbackId = UUID.randomUUID().toString()
+        val internalRollback = File(context.cacheDir, "restore-rollback-$rollbackId")
+        val externalRollback = File(externalFiles, ".restore-rollback-$rollbackId")
+        val rollbackPreferences = File(internalRollback, "shared_prefs")
+        val rollbackProfiles = File(internalRollback, "profiles")
+        var liveStateModified = false
+
+        try {
+            snapshotDspPreferences(sharedPreferences, rollbackPreferences)
+            copyDirectoryOrThrow(deviceProfiles, rollbackProfiles)
+            FileLibraryPreference.types.keys.forEach { directoryName ->
+                copyDirectoryOrThrow(
+                    File(externalFiles, directoryName),
+                    File(externalRollback, directoryName)
+                )
+            }
+
+            liveStateModified = true
+            if (!dirty) clearLiveDspData(sharedPreferences, deviceProfiles, externalFiles)
+            copyStagedDspData(stagingRoot, sharedPreferences, deviceProfiles, externalFiles)
+
+            return File(stagingRoot, "profiles").isDirectory
+        } catch (restoreFailure: Exception) {
+            if (liveStateModified) {
+                try {
+                    clearLiveDspData(sharedPreferences, deviceProfiles, externalFiles)
+                    restoreDspPreferences(rollbackPreferences, sharedPreferences)
+                    copyDirectoryOrThrow(rollbackProfiles, deviceProfiles)
+                    FileLibraryPreference.types.keys.forEach { directoryName ->
+                        copyDirectoryOrThrow(
+                            File(externalRollback, directoryName),
+                            File(externalFiles, directoryName)
+                        )
+                    }
+                } catch (rollbackFailure: Exception) {
+                    Timber.e(rollbackFailure, "Backup restore rollback failed")
+                    restoreFailure.addSuppressed(rollbackFailure)
+                }
+            }
+            throw restoreFailure
+        } finally {
+            internalRollback.deleteRecursively()
+            externalRollback.deleteRecursively()
+        }
+    }
+
+    private fun snapshotDspPreferences(source: File, target: File) {
+        source.listFiles(::isDspPreferenceFile).orEmpty().forEach { preference ->
+            target.mkdirs()
+            preference.copyTo(File(target, preference.name), overwrite = true)
+        }
+    }
+
+    private fun restoreDspPreferences(source: File, target: File) {
+        source.listFiles(::isDspPreferenceFile).orEmpty().forEach { preference ->
+            target.mkdirs()
+            preference.copyTo(File(target, preference.name), overwrite = true)
+        }
+    }
+
+    private fun copyStagedDspData(
+        stagingRoot: File,
+        sharedPreferences: File,
+        deviceProfiles: File,
+        externalFiles: File
+    ) {
+        restoreDspPreferences(File(stagingRoot, "shared_prefs"), sharedPreferences)
+        copyDirectoryOrThrow(File(stagingRoot, "profiles"), deviceProfiles)
+        FileLibraryPreference.types.keys.forEach { directoryName ->
+            copyDirectoryOrThrow(
+                File(stagingRoot, directoryName),
+                File(externalFiles, directoryName)
+            )
+        }
+    }
+
+    private fun clearLiveDspData(
+        sharedPreferences: File,
+        deviceProfiles: File,
+        externalFiles: File
+    ) {
+        sharedPreferences.listFiles(::isDspPreferenceFile).orEmpty().forEach { preference ->
+            if (!preference.delete()) throw IOException("Unable to replace DSP preferences")
+        }
+        deleteDirectoryOrThrow(deviceProfiles)
+        FileLibraryPreference.types.keys.forEach { directoryName ->
+            deleteDirectoryOrThrow(File(externalFiles, directoryName))
+        }
+    }
+
+    private fun copyDirectoryOrThrow(source: File, target: File) {
+        if (!source.exists()) return
+        if (!source.isDirectory || !source.copyRecursively(target, overwrite = true)) {
+            throw IOException("Unable to copy restored DSP data")
+        }
+    }
+
+    private fun deleteDirectoryOrThrow(directory: File) {
+        if (directory.exists() && !directory.deleteRecursively()) {
+            throw IOException("Unable to replace restored DSP data")
+        }
+    }
+
+    private fun isDspPreferenceFile(file: File): Boolean {
+        return file.isFile && file.name.startsWith("dsp_") &&
+            file.extension.equals("xml", ignoreCase = true)
     }
 
     companion object {
         private const val META_MIN_VERSION_CODE = "min_version_code"
+        private const val META_MIN_VERSION_CODE_LEGACY = "minVersionCode"
         private const val META_FLAVOR = "flavor"
         private const val META_HAS_DEVICE_PROFILES = "has_device_profiles"
         const val META_IS_BACKUP = "is_backup"
 
-        private fun isKnownFile(name: String): Boolean {
-            return (name.contains("dsp_") && name.endsWith(".xml")) ||
-                    name.startsWith("profiles/") ||
-                    FileLibraryPreference.types.any { name.contains(it.key) && it.value.any { ext -> name.endsWith(ext) } }
+        private val supportedMimeTypes = arrayOf(
+            "application/gzip",
+            "application/x-gzip",
+            "application/tar+gzip",
+            "application/x-compressed-tar",
+            "application/x-gtar",
+            "application/x-tar",
+            "application/octet-stream",
+            "application/*"
+        )
+
+        internal fun isKnownFile(name: String): Boolean {
+            val path = name.split('/')
+            if (path.any { it.isBlank() }) return false
+
+            return when (path.firstOrNull()) {
+                "shared_prefs" -> path.size == 2 &&
+                    path.last().startsWith("dsp_") &&
+                    path.last().endsWith(".xml", ignoreCase = true)
+                "profiles" -> path.size in 2..3 &&
+                    path.last() in setOf("profile.json", "profile.tar")
+                else -> path.size == 2 && FileLibraryPreference.types[path.first()]?.any { extension ->
+                    path.last().lowercase(Locale.ROOT).endsWith(extension)
+                } == true
+            }
+        }
+
+        fun getSupportedMimeTypes(): Array<String> {
+            return supportedMimeTypes.clone()
+        }
+
+        internal fun getMinimumVersionCode(metadata: Map<String, String>): Int {
+            return metadata[META_MIN_VERSION_CODE]?.toIntOrNull()
+                ?: metadata[META_MIN_VERSION_CODE_LEGACY]?.toIntOrNull()
+                ?: 0
+        }
+
+        internal fun isExplicitNonBackup(metadata: Map<String, String>): Boolean {
+            return metadata[META_IS_BACKUP]?.equals(false.toString(), ignoreCase = true) == true
         }
 
         fun getBackupFilename(): String {

@@ -166,7 +166,7 @@
     <string name="onboarding_back">Terug</string>
     <string name="onboarding_next">Volgende</string>
     <string name="onboarding_finish">Klaar</string>
-    <string name="onboarding_greeting">Welkom bij RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Welkom bij RootlessZachDSP!</string>
     <string name="onboarding_caption">Deze assistent helpt u deze app in te stellen.</string>
     <string name="onboarding_warning">Deze applicatie is momenteel onvoltooid en instabiel. Houd er rekening mee dat het op sommige apparaten mogelijk niet werkt zoals verwacht, omdat het gebruik maakt van Android API\'s die niet zijn ontworpen voor gebruik door derden.</string>
     <string name="onboarding_fix_permissions_title">Gebruikersactie vereist</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Opnieuw proberen</string>
     <string name="app_compat_exclude">Uitsluiten</string>
     <string name="app_compat_title">Audio-verwerking is onderbroken om dubbele audio te voorkomen</string>
-    <string name="app_compat_explanation">De volgende app wordt niet ondersteund, omdat RootlessJamesDSP hierdoor de controle over zijn audio-route verliest:</string>
-    <string name="app_compat_instruction">Controleer de instellingen van de app als u HW-versnelling of andere instellingen kunt uitschakelen die RootlessJamesDSP kunnen verstoren en tik op \'Opnieuw proberen\'.</string>
+    <string name="app_compat_explanation">De volgende app wordt niet ondersteund, omdat RootlessZachDSP hierdoor de controle over zijn audio-route verliest:</string>
+    <string name="app_compat_instruction">Controleer de instellingen van de app als u HW-versnelling of andere instellingen kunt uitschakelen die RootlessZachDSP kunnen verstoren en tik op \'Opnieuw proberen\'.</string>
     <string name="app_compat_instruction_exclude">Als alternatief selecteer \'Uitsluiten\' om dit probleem te omzeilen door de niet-compatibele app uit te sluiten van audio-verwerking.</string>
     <string name="app_compat_unknown_pkg_name">Onbekende pakketnaam</string>
     <!-- Root: Library load failure -->

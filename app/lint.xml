@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      RootlessJamesDSP's inherited Crowdin catalog is intentionally incomplete and contains
+      locale-only entries. Android falls back to the complete default English resources.
+      Translation parity is tracked separately and must not hide runtime/API lint findings.
+    -->
+    <issue id="MissingTranslation" severity="ignore" />
+    <issue id="ExtraTranslation" severity="ignore" />
+
+    <!--
+      This formatter belongs to the disabled legacy root self-update path. The Korean
+      upstream translation contains a malformed placeholder; the rootless fork does not
+      package or execute this updater. Keep all other StringFormatInvalid findings enabled.
+    -->
+    <issue id="StringFormatInvalid">
+        <ignore path="src/main/java/me/timschneeberger/rootlessjamesdsp/activity/MainActivity.kt" />
+    </issue>
+</lint>

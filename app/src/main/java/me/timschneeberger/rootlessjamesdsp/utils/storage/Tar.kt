@@ -1,7 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.utils.storage
 
 import android.content.Context
-import android.system.ErrnoException
 import org.kamranzafar.jtar.TarEntry
 import org.kamranzafar.jtar.TarInputStream
 import org.kamranzafar.jtar.TarOutputStream
@@ -21,6 +20,21 @@ import java.io.OutputStream
 
 object Tar {
     private const val FILE_METADATA = "metadata"
+    private const val MAX_METADATA_BYTES = 64L * 1024L
+    private const val MAX_ENTRY_PATH_LENGTH = 1024
+    private const val MAX_ENTRY_PATH_DEPTH = 16
+
+    data class Limits(
+        val maxEntryCount: Int = 4096,
+        val maxEntryBytes: Long = 256L * 1024L * 1024L,
+        val maxTotalBytes: Long = 512L * 1024L * 1024L
+    ) {
+        init {
+            require(maxEntryCount > 0)
+            require(maxEntryBytes > 0)
+            require(maxTotalBytes > 0)
+        }
+    }
 
     /**
      * Create tar composer
@@ -76,31 +90,83 @@ object Tar {
     /** Create tar reader */
     class Reader(
         private val inStream: InputStream,
-        private val shouldExtract: ((entryName: String) -> Boolean) = { true }
+        private val shouldExtract: ((entryName: String) -> Boolean) = { true },
+        private val limits: Limits = Limits()
     ) {
-        private fun process(onNextEntry: (tis: TarInputStream, entryName: String) -> Unit) {
+        private fun process(
+            onNextEntry: (
+                tis: TarInputStream,
+                entryName: String,
+                shouldKeep: Boolean
+            ) -> Unit
+        ) {
             TarInputStream(BufferedInputStream(inStream)).use { tis ->
                 var entry: TarEntry?
+                var entryCount = 0
+                val seenEntries = mutableSetOf<String>()
                 while (tis.nextEntry.also { entry = it } != null) {
-                    val entryName = entry?.name
-                    entryName ?: break
+                    val rawEntryName = entry?.name ?: break
+                    val isDirectory = rawEntryName.endsWith('/')
+                    val entryName = normalizeArchiveEntryName(
+                        if (isDirectory) rawEntryName.dropLast(1) else rawEntryName
+                    ) ?: throw IOException("Unsafe archive entry path")
 
-                    if (!shouldExtract(entryName) && entryName != FILE_METADATA) {
-                        Timber.w("Entry name ignored: $entryName")
-                        continue
+                    entryCount++
+                    if (entryCount > limits.maxEntryCount) {
+                        throw IOException("Archive contains too many entries")
                     }
 
-                    onNextEntry(tis, entryName)
+                    val uniqueName = if (isDirectory) "$entryName/" else entryName
+                    if (!seenEntries.add(uniqueName)) {
+                        throw IOException("Archive contains duplicate entries")
+                    }
+
+                    val shouldKeep = !isDirectory &&
+                        (shouldExtract(entryName) || entryName == FILE_METADATA)
+                    if (!shouldKeep) {
+                        Timber.w("Entry name ignored: $entryName")
+                    }
+
+                    onNextEntry(tis, entryName, shouldKeep)
                 }
+            }
+        }
+
+        private fun transferEntry(
+            stream: TarInputStream,
+            destination: OutputStream?,
+            totalBytes: LongArray,
+            maxEntryBytes: Long = limits.maxEntryBytes
+        ) {
+            var entryBytes = 0L
+            val data = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = stream.read(data)
+                if (count == -1) break
+
+                if (entryBytes > maxEntryBytes - count) {
+                    throw IOException("Archive entry exceeds the expanded size limit")
+                }
+                if (totalBytes[0] > limits.maxTotalBytes - count) {
+                    throw IOException("Archive exceeds the total expanded size limit")
+                }
+
+                entryBytes += count
+                totalBytes[0] += count
+                destination?.write(data, 0, count)
             }
         }
 
         fun validate(): Boolean {
             Timber.d("Validating preset")
 
-            var knownCount = 0
+            var payloadCount = 0
+            val totalBytes = longArrayOf(0L)
             try {
-                process { _, _ -> knownCount++ }
+                process { stream, name, shouldKeep ->
+                    if (shouldKeep && name != FILE_METADATA) payloadCount++
+                    transferEntry(stream, null, totalBytes)
+                }
             }
             catch(ex: Exception) {
                 Timber.e("Validation failed due to exception")
@@ -108,7 +174,7 @@ object Tar {
                 return false
             }
 
-            if (knownCount < 1) {
+            if (payloadCount < 1) {
                 Timber.e("Archive did not contain any useful data")
                 return false
             }
@@ -117,45 +183,52 @@ object Tar {
         }
 
         fun extract(targetFolder: File) : Map<String, String>? {
-            if(targetFolder.exists())
-                targetFolder.delete()
-            targetFolder.mkdirs()
+            if(targetFolder.exists() && !targetFolder.deleteRecursively()) {
+                Timber.e("Unable to clear archive staging directory")
+                return null
+            }
+            if(!targetFolder.mkdirs()) {
+                Timber.e("Unable to create archive staging directory")
+                return null
+            }
 
             val metadataBytes = ByteArrayOutputStream()
+            val totalBytes = longArrayOf(0L)
             try {
-                process { stream, name ->
-                    var count: Int
-                    val data = ByteArray(2048)
-                    // create subdirectories in archive entry name
-                    File(targetFolder.absolutePath + "/" + name).parentFile?.mkdirs()
-                    BufferedOutputStream(FileOutputStream(
-                        targetFolder.absolutePath + "/" + name
-                    )).use { dest ->
-                        while (stream.read(data).also { count = it } != -1) {
-                            if (name == FILE_METADATA)
-                                metadataBytes.write(data, 0, count)
-                            else
-                                dest.write(data, 0, count)
+                process { stream, name, shouldKeep ->
+                    when {
+                        !shouldKeep -> transferEntry(stream, null, totalBytes)
+                        name == FILE_METADATA -> transferEntry(
+                            stream,
+                            metadataBytes,
+                            totalBytes,
+                            MAX_METADATA_BYTES
+                        )
+                        else -> {
+                            val destination = resolveContainedFile(targetFolder, name)
+                            if (destination.parentFile?.mkdirs() == false &&
+                                destination.parentFile?.isDirectory != true) {
+                                throw IOException("Unable to create archive entry directory")
+                            }
+                            BufferedOutputStream(FileOutputStream(destination)).use { output ->
+                                transferEntry(stream, output, totalBytes)
+                                output.flush()
+                            }
                         }
-                        dest.flush()
                     }
                 }
                 metadataBytes.flush()
             }
-            catch(ex: ErrnoException) {
-                Timber.e("Extraction failed; errno=${ex.errno}")
-                Timber.w(ex)
-                return null
-            }
-            catch(ex: IOException) {
+            catch(ex: Exception) {
                 Timber.e("Extraction failed")
                 Timber.w(ex)
+                targetFolder.deleteRecursively()
                 return null
             }
 
             return mutableMapOf<String, String>().apply {
-                metadataBytes.toString().lines().forEach {
-                    val args = it.split("=")
+                metadataBytes.toString(Charsets.UTF_8.name()).lines().forEach {
+                    val args = it.split("=", limit = 2)
                     if(args.size < 2)
                         return@forEach
 
@@ -163,6 +236,32 @@ object Tar {
                 }
             }
         }
+
+        private fun resolveContainedFile(targetFolder: File, entryName: String): File {
+            val root = targetFolder.canonicalFile
+            val destination = File(root, entryName).canonicalFile
+            val rootPrefix = root.path + File.separator
+            if (destination == root || !destination.path.startsWith(rootPrefix)) {
+                throw IOException("Archive entry escaped the staging directory")
+            }
+            return destination
+        }
+    }
+
+    internal fun normalizeArchiveEntryName(entryName: String): String? {
+        if (entryName.isBlank() || entryName.length > MAX_ENTRY_PATH_LENGTH) return null
+        if (entryName.startsWith('/') || entryName.contains('\\') || entryName.contains('\u0000')) {
+            return null
+        }
+        if (entryName.matches(Regex("^[A-Za-z]:($|/).*"))) return null
+
+        val segments = entryName.split('/')
+        if (segments.size > MAX_ENTRY_PATH_DEPTH ||
+            segments.any { it.isBlank() || it == "." || it == ".." }) {
+            return null
+        }
+
+        return segments.joinToString("/")
     }
 
 }

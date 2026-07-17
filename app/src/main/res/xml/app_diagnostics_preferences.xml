@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <Preference
+        app:key="@string/key_diagnostics_engine_status"
+        app:title="@string/rootless_zach_diagnostics_engine_status_title"
+        app:summary="@string/rootless_zach_diagnostics_no_telemetry"
+        app:selectable="false"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        app:key="@string/key_diagnostics_recent_events"
+        app:title="@string/rootless_zach_diagnostics_recent_title"
+        app:summary="@string/rootless_zach_diagnostics_recent_summary"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        app:key="@string/key_diagnostics_copy_summary"
+        app:title="@string/rootless_zach_diagnostics_copy_title"
+        app:summary="@string/rootless_zach_diagnostics_copy_summary"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        app:key="@string/key_diagnostics_preview_export"
+        app:title="@string/rootless_zach_diagnostics_preview_title"
+        app:summary="@string/rootless_zach_diagnostics_preview_summary"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        app:key="@string/key_diagnostics_clear_history"
+        app:title="@string/rootless_zach_diagnostics_clear_title"
+        app:summary="@string/rootless_zach_diagnostics_clear_summary"
+        app:iconSpaceReserved="false" />
+
+</PreferenceScreen>

@@ -229,9 +229,12 @@
     <string name="onboarding_back">Back</string>
     <string name="onboarding_next">Next</string>
     <string name="onboarding_finish">Finish</string>
-    <string name="onboarding_greeting">Welcome to RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Welcome to RootlessZachDSP!</string>
     <string name="onboarding_caption">This assistant will help you to set-up this app.</string>
     <string name="onboarding_warning">Currently, this application is unfinished and unstable. Please note that it may not work on some devices as expected since it uses Android APIs not designed for use by third parties.</string>
+    <string name="onboarding_migration_caption">Already use RootlessJamesDSP? Import its DSP backup now, or open Settings before completing setup.</string>
+    <string name="onboarding_import_backup">Import RootlessJamesDSP backup</string>
+    <string name="onboarding_open_settings">Open settings</string>
     <string name="onboarding_fix_permissions_title">User action required</string>
     <string name="onboarding_fix_permissions">One or more permissions were revoked by you or the system.\nIn order to ensure that this app behaves correctly, you need to grant these permissions again.\n\nPlease redo the setup wizard to re-grant these permissions.</string>
 
@@ -586,8 +589,8 @@
     <string name="app_compat_retry">Retry</string>
     <string name="app_compat_exclude">Exclude</string>
     <string name="app_compat_title">Audio processing has been suspended to prevent duplicated audio</string>
-    <string name="app_compat_explanation">The following app is unsupported because it causes RootlessJamesDSP to lose control over its audio routing:</string>
-    <string name="app_compat_instruction">Please check the app\'s settings if you can disable HW-acceleration or other settings that could interfere with RootlessJamesDSP and tap \'Retry\'.</string>
+    <string name="app_compat_explanation">The following app is unsupported because it causes RootlessZachDSP to lose control over its audio routing:</string>
+    <string name="app_compat_instruction">Please check the app\'s settings if you can disable HW-acceleration or other settings that could interfere with RootlessZachDSP and tap \'Retry\'.</string>
     <string name="app_compat_instruction_exclude">Alternatively, select \'Exclude\' to bypass this issue by excluding the incompatible app from audio processing.</string>
     <string name="app_compat_unknown_pkg_name">Unknown package name</string>
 
@@ -659,6 +662,7 @@
     <string name="backup_restore_error_format">Unsupported or corrupted backup file</string>
     <string name="backup_restore_error_version_too_new">The backup has been created with a newer version of this application and cannot be loaded. Please update this app to continue.</string>
     <string name="backup_restore_completed">Restore completed</string>
+    <string name="backup_restore_started">Restore started. You can keep using the app; completion will be reported when it finishes.</string>
     <string name="backup_create_completed">Backup created</string>
     <string name="backup_create_progress">Creating backup</string>
     <string name="backup_create_error">Backup failed</string>

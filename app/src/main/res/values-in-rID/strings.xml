@@ -166,7 +166,7 @@
     <string name="onboarding_back">Kembali</string>
     <string name="onboarding_next">Lanjut</string>
     <string name="onboarding_finish">Selesai</string>
-    <string name="onboarding_greeting">Selamat datang di RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Selamat datang di RootlessZachDSP!</string>
     <string name="onboarding_caption">Asisten membantu anda menyetel aplikasi ini.</string>
     <string name="onboarding_warning">Saat ini, aplikasi masih dalam tahap pengembangan. Perlu diketahui aplikasi mungkin tidak berjalan dengan baik karena menggunakan API Android yang dirancang untuk tidak digunakan oleh pihak ketiga.</string>
     <string name="onboarding_fix_permissions_title">Tindakan pengguna diperlukan</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Coba Lagi</string>
     <string name="app_compat_exclude">Kecualikan</string>
     <string name="app_compat_title">Pemrosesan audio dihentikan untuk mencegah duplikasi suara</string>
-    <string name="app_compat_explanation">Aplikasi berikut membuat RootlessJamesDSP kehilangan kontrol terhadap routing audio:</string>
-    <string name="app_compat_instruction">Periksa pengaturan aplikasi jika anda bisa menonaktifkan HW-acceleration atau pengaturan lainnya yang mungkin bentrok dengan RootlessJamesDSP, lalu tekan \'Ulangi\'.</string>
+    <string name="app_compat_explanation">Aplikasi berikut membuat RootlessZachDSP kehilangan kontrol terhadap routing audio:</string>
+    <string name="app_compat_instruction">Periksa pengaturan aplikasi jika anda bisa menonaktifkan HW-acceleration atau pengaturan lainnya yang mungkin bentrok dengan RootlessZachDSP, lalu tekan \'Ulangi\'.</string>
     <string name="app_compat_instruction_exclude">Untuk langkah alternatif, anda bisa memilih \'Kecualikan\' untuk mengecualikan aplikasi yang tidak didukung.</string>
     <string name="app_compat_unknown_pkg_name">Nama package tidak dikenal</string>
     <!-- Root: Library load failure -->

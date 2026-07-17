@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">RootlessZachDSP icon</title>
+  <desc id="desc">Two audio sliders over a dark galaxy background with a subtle Z-shaped signal path.</desc>
+  <defs>
+    <radialGradient id="bg" cx="24%" cy="14%" r="105%"><stop offset="0" stop-color="#6539C8"/><stop offset=".45" stop-color="#18366F"/><stop offset="1" stop-color="#070918"/></radialGradient>
+    <linearGradient id="rightKnob" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D7CDFF"/><stop offset="1" stop-color="#84D7FF"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="22"/></filter>
+  </defs>
+  <rect x="18" y="18" width="988" height="988" rx="225" fill="url(#bg)"/>
+  <path d="M285 300H730L340 720H760" fill="none" stroke="#5DD4FF" stroke-opacity=".24" stroke-width="58" filter="url(#glow)"/>
+  <path d="M285 300H730L340 720H760" fill="none" stroke="#78D6FF" stroke-opacity=".38" stroke-width="18"/>
+  <g fill="#E4DFFF"><rect x="319" y="205" width="62" height="620" rx="31"/><rect x="643" y="205" width="62" height="620" rx="31"/></g>
+  <circle cx="350" cy="625" r="108" fill="#C9BEFF"/><circle cx="350" cy="625" r="63" fill="#6740CD"/>
+  <circle cx="674" cy="390" r="108" fill="url(#rightKnob)"/><circle cx="674" cy="390" r="63" fill="#6740CD"/>
+</svg>

@@ -45,7 +45,9 @@ object Constants {
     const val ACTION_DISCARD_AUTHORIZATION = BuildConfig.APPLICATION_ID + ".action.service.DISCARD_AUTHORIZATION"
     const val ACTION_REPORT_SAMPLE_RATE = BuildConfig.APPLICATION_ID + ".action.service.REPORT_SAMPLE_RATE"
     const val ACTION_BACKUP_RESTORED = BuildConfig.APPLICATION_ID + ".action.backup.RESTORED"
+    const val ACTION_BACKUP_RESTORE_FAILED = BuildConfig.APPLICATION_ID + ".action.backup.RESTORE_FAILED"
 
     // Intent extras
     const val EXTRA_SAMPLE_RATE = BuildConfig.APPLICATION_ID + ".extra.service.SAMPLE_RATE"
+    const val EXTRA_BACKUP_RESTORE_ERROR = BuildConfig.APPLICATION_ID + ".extra.backup.RESTORE_ERROR"
 }

@@ -166,7 +166,7 @@
     <string name="onboarding_back">رجوع</string>
     <string name="onboarding_next">التالي</string>
     <string name="onboarding_finish">إنهاء</string>
-    <string name="onboarding_greeting">مرحبا بك في RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">مرحبا بك في RootlessZachDSP!</string>
     <string name="onboarding_caption">سيساعدك هذا المساعد في إعداد هذا التطبيق.</string>
     <string name="onboarding_warning">وهذا التطبيق غير مكتمل وغير مستقر في الوقت الحالي. يرجى ملاحظة أنه قد لا يعمل على بعض الأجهزة كما هو متوقع لأنه يستخدم أندرويد APIs غير مصممة للاستخدام من قبل أطراف ثالثة.</string>
     <string name="onboarding_fix_permissions_title">مطلوب إجراء من المستخدم</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">أعد المحاولة</string>
     <string name="app_compat_exclude">قائمة الإستثناء</string>
     <string name="app_compat_title">تم تعليق معالجة الصوت لمنع تكرار الصوت</string>
-    <string name="app_compat_explanation">التطبيق التالي غير مدعوم لأنه يتسبب في فقدان RootlessJamesDSP السيطرة على مسار الصوت الخاص به:</string>
-    <string name="app_compat_instruction">الرجاء التحقق من إعدادات التطبيق إذا كنت تستطيع تعطيل تسارع HW-أو الإعدادات الأخرى التي يمكن أن تتداخل مع RootlessJamesDSP وانقر على \"إعادة المحاولة\".</string>
+    <string name="app_compat_explanation">التطبيق التالي غير مدعوم لأنه يتسبب في فقدان RootlessZachDSP السيطرة على مسار الصوت الخاص به:</string>
+    <string name="app_compat_instruction">الرجاء التحقق من إعدادات التطبيق إذا كنت تستطيع تعطيل تسارع HW-أو الإعدادات الأخرى التي يمكن أن تتداخل مع RootlessZachDSP وانقر على \"إعادة المحاولة\".</string>
     <string name="app_compat_instruction_exclude">بدلاً من ذلك، حدد \'استبعاد\' لتجاوز هذه المشكلة عن طريق استبعاد التطبيق غير المتوافق من معالجة الصوت.</string>
     <string name="app_compat_unknown_pkg_name">اسم الحزمة غير معروف</string>
     <!-- Root: Library load failure -->

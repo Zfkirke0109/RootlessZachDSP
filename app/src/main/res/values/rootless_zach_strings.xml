@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rootless_zach_app_name">RootlessZachDSP</string>
+    <string name="rootless_zach_upstream_credit">Independent fork of RootlessJamesDSP by Tim Schneeberger / ThePBone. DSP engine by James Fung.</string>
+    <string name="rootless_zach_privacy_summary">Compatibility reports are generated locally and are never uploaded automatically.</string>
+    <string name="rootless_zach_project_page">RootlessZachDSP project</string>
+    <string name="rootless_zach_project_page_summary">Source code, releases, issues, and roadmap</string>
+    <string name="rootless_zach_upstream_project">Original RootlessJamesDSP project</string>
+    <string name="rootless_zach_upstream_project_summary">Created and maintained by Tim Schneeberger / ThePBone</string>
+    <string name="rootless_zach_credit_upstream_title">Original app and rootless architecture</string>
+    <string name="rootless_zach_credit_upstream_summary">Tim Schneeberger / ThePBone (@timschneeb)</string>
+    <string name="rootless_zach_credit_dsp_title">JamesDSP and libjamesdsp engine</string>
+    <string name="rootless_zach_credit_dsp_summary">James Fung (@james34602)</string>
+    <string name="rootless_zach_credit_fork_title">RootlessZachDSP fork direction</string>
+    <string name="rootless_zach_credit_fork_summary">Zach Kirke (@Zfkirke0109)</string>
+    <string name="rootless_zach_license_title">Open-source license</string>
+    <string name="rootless_zach_license_summary">GNU General Public License v3.0; upstream notices and history preserved</string>
+
+    <string name="key_diagnostics">rootless_zach_diagnostics</string>
+    <string name="key_diagnostics_engine_status">rootless_zach_diagnostics_engine_status</string>
+    <string name="key_diagnostics_recent_events">rootless_zach_diagnostics_recent_events</string>
+    <string name="key_diagnostics_copy_summary">rootless_zach_diagnostics_copy_summary</string>
+    <string name="key_diagnostics_preview_export">rootless_zach_diagnostics_preview_export</string>
+    <string name="key_diagnostics_clear_history">rootless_zach_diagnostics_clear_history</string>
+
+    <string name="rootless_zach_diagnostics_title">Diagnostics</string>
+    <string name="rootless_zach_diagnostics_summary">Engine health, transport events, and privacy-safe support data</string>
+    <string name="rootless_zach_diagnostics_engine_status_title">Engine and transport status</string>
+    <string name="rootless_zach_diagnostics_no_telemetry">No transport telemetry has been received yet.</string>
+    <string name="rootless_zach_diagnostics_recent_title">View recent structured events</string>
+    <string name="rootless_zach_diagnostics_recent_summary">Show the newest app-private JSONL records</string>
+    <string name="rootless_zach_diagnostics_copy_title">Copy compatibility summary</string>
+    <string name="rootless_zach_diagnostics_copy_summary">Copy a locally generated redacted report to the clipboard</string>
+    <string name="rootless_zach_diagnostics_preview_title">Preview and export support bundle</string>
+    <string name="rootless_zach_diagnostics_preview_summary">Review the redacted text before sharing it</string>
+    <string name="rootless_zach_diagnostics_clear_title">Clear diagnostic history</string>
+    <string name="rootless_zach_diagnostics_clear_summary">Delete active and rotated structured event files</string>
+    <string name="rootless_zach_diagnostics_empty_events">No structured events have been persisted yet.</string>
+    <string name="rootless_zach_diagnostics_copied">Diagnostics summary copied.</string>
+    <string name="rootless_zach_diagnostics_clear_confirm">Delete all locally stored structured diagnostic events?</string>
+    <string name="rootless_zach_diagnostics_cleared">Diagnostic history cleared.</string>
+    <string name="rootless_zach_diagnostics_share">Share redacted bundle</string>
+    <string name="rootless_zach_diagnostics_share_title">Share RootlessZachDSP diagnostics</string>
+    <string name="rootless_zach_diagnostics_preview_header">Redacted compatibility report and recent technical event records. No raw PCM is stored.</string>
+    <string name="rootless_zach_diagnostics_export_blocked_title">Export blocked by privacy check</string>
+    <string name="rootless_zach_diagnostics_export_blocked">The bundle still contains %1$d potentially sensitive item(s). Clear or sanitize the flagged diagnostic data before sharing.</string>
+
+    <!-- Fork-owned strings stay untranslated until the new localization workflow is established. -->
+    <string name="rootless_zach_autoeq_network_error" translatable="false">Failed to connect to the AutoEQ server.</string>
+</resources>

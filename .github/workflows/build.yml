@@ -1,168 +1,306 @@
-name: Build signed app
+name: RootlessZachDSP Android CI
+
 on:
   pull_request:
-    branches:
-      - master
+    branches: [master]
   push:
-    branches:
-      - master
-    tags:
-      - v*
+    branches: [master, "develop/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: rootless-zach-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  build:
-    name: Build app
-    runs-on: ubuntu-latest
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
 
-    strategy:
-      matrix:
-        flavor: [Rootless, Root]
-        
+jobs:
+  test-and-build:
+    name: Test and build rootless FOSS app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
-      - id: flavor
-        uses: ASzc/change-string-case-action@v5
-        with:
-          string: ${{ matrix.flavor }}
-          
-      - name: Install packages
-        run: |
-          sudo apt update
-          sudo apt install rename
-    
-      - name: Clone repo
+      - name: Check out repository and DSP submodules
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+          fetch-depth: 0
 
-      - name: Validate Gradle Wrapper
-        uses: gradle/wrapper-validation-action@v3
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: 17
-          distribution: adopt
+          distribution: temurin
+          java-version: "17"
 
-      - name: Build release app
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: gradle/gradle-command-action@v2
-        with:
-          arguments: assemble${{ matrix.flavor }}FullRelease
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
 
-      - name: Build preview app
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: gradle/gradle-command-action@v2
-        with:
-          arguments: assemble${{ matrix.flavor }}FullPreview
-          
-      - name: Declare preview build type
-        if: "!startsWith(github.ref, 'refs/tags/')"
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK, build tools, and NDK r28
+        shell: bash
         run: |
-          set -x
-          echo "BUILD_TYPE=preview" >> $GITHUB_ENV
-          
-      - name: Declare release build type
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -x
-          echo "BUILD_TYPE=release" >> $GITHUB_ENV
-          
-      - name: Get tag name
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -x
-          echo "VERSION_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-       
-      - name: Sign APKs
-        uses: ilharp/sign-android-release@v2
-        with:
-          buildToolsVersion: 35.0.0
-          releaseDir: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          signingKey: ${{ secrets.SIGNING_KEYSTORE }}
-          keyAlias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+          sdkmanager --list_installed
 
-      - name: Rename build artifacts
+      - name: Run deterministic audio-transport tests
+        run: ./gradlew --stacktrace testRootlessFdroidDebugUnitTest
+
+      - name: Build installable debug APKs
+        run: ./gradlew --stacktrace assembleRootlessFdroidDebug
+
+      - name: Verify debug APK identity, signatures, alignment, and checksums
+        shell: bash
         run: |
-          set -e
-          ls -l app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          rename -v 's/-unsigned-signed//g' app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*.apk
-          rm -f app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*unsigned*.apk || true
-          ls -l app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/rootlessFdroid/debug"
+          VERIFY_DIR="ci-artifacts/verification"
+          mkdir -p "$VERIFY_DIR"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          test "${#APKS[@]}" -gt 0 || { echo "No debug APKs found" >&2; exit 1; }
+          : > "$VERIFY_DIR/SHA256SUMS.txt"
+          for apk in "${APKS[@]}"; do
+            name="$(basename "$apk")"
+            echo "Verifying $name"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" \
+              > "$VERIFY_DIR/${name}.apksigner.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp.debug'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            sha256sum "$apk" >> "$VERIFY_DIR/SHA256SUMS.txt"
+          done
 
-      - name: Upload build artifact (universal)
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ matrix.flavor }}JamesDSP-universal-preview_apk"
-          path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*universal-${{ env.BUILD_TYPE }}-signed.apk
+      - name: Run lint and preserve report
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-artifacts/lint
+          ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug 2>&1 \
+            | tee ci-artifacts/lint/console.log
 
-      - name: Upload build artifact (x86)
+      - name: Collect lint outputs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts/lint/files
+          find app/build -type f \
+            \( -iname '*lint*.html' -o -iname '*lint*.xml' -o -iname '*lint*.txt' -o -iname '*lint*.sarif' \) \
+            -print -exec cp --parents '{}' ci-artifacts/lint/files/ \; || true
+          find ci-artifacts/lint -type f -maxdepth 12 -print || true
+
+      - name: Upload debug APKs and reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-x86-preview_apk"
-          path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*x86-${{ env.BUILD_TYPE }}-signed.apk
-          
-      - name: Upload build artifact (x86_64)
-        uses: actions/upload-artifact@v4
+          name: RootlessZachDSP-debug-test-only-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/rootlessFdroid/debug/*.apk
+            app/build/reports/tests/**
+            ci-artifacts/lint/**
+            ci-artifacts/verification/**
+
+      - name: Enforce lint gate
+        if: steps.lint.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Android lint reported blocking findings. See ci-artifacts/lint in the uploaded artifact." >&2
+          exit 1
+
+  signed-release:
+    name: Build and verify signed release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      startsWith(github.ref, 'refs/heads/develop/')
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository and DSP submodules
+        uses: actions/checkout@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-x86_64-preview_apk"
-          path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*x86_64-${{ env.BUILD_TYPE }}-signed.apk
-          
-      - name: Upload build artifact (armeabi-v7a)
-        uses: actions/upload-artifact@v4
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-armeabi-v7a-preview_apk"
-          path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*armeabi-v7a-${{ env.BUILD_TYPE }}-signed.apk
-               
-      - name: Upload build artifact (arm64-v8a)
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ matrix.flavor }}JamesDSP-arm64-v8a-preview_apk"
-          path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*arm64-v8a-${{ env.BUILD_TYPE }}-signed.apk
-       
-      - name: Deploy root flavor APKs to the server
-        if: ${{ steps.flavor.outputs.lowercase == 'root' && startsWith(github.ref, 'refs/tags/') && github.repository == 'timschneeb/RootlessJamesDSP' }}
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
-        with:
-            username: 'tim'
-            server: 'srv1.timschneeberger.me'
-            ssh_private_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }} 
-            local_path: "app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*universal-${{ env.BUILD_TYPE }}-signed.apk"
-            remote_path: '/srv/http/nightly.timschneeberger.me/jamesdsp-rootfull'
-            sftpArgs: '-o ConnectTimeout=5'
-       
-      - name: Changelog
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: ardalanamini/auto-changelog@v3
-        id: changelog
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          release-name: ${{ env.VERSION_TAG }}
-          mention-authors: false
-          mention-new-contributors: false
-          include-compare: true
-          
-      - name: Read changelog template
-        id: changelog_post
-        uses: andstor/file-reader-action@v1
-        with:
-          path: ".github/CHANGELOG_POSTFIX.md"
-          
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'timschneeb/RootlessJamesDSP'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.VERSION_TAG }}
-          name: RootlessJamesDSP ${{ env.VERSION_TAG }}
-          body: "${{ steps.changelog.outputs.changelog }} &#x20; ${{ steps.changelog_post.outputs.contents }}"
-          #files: |
-          #   app/build/outputs/apk/rootlessFull/${{ env.BUILD_TYPE }}/*-signed.apk
-          draft: true
-          prerelease: false
+          distribution: temurin
+          java-version: "17"
+
+      - name: Validate signing secrets and key before compilation
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_RELEASE_KEYSTORE_BASE64: ${{ secrets.GH_RELEASE_KEYSTORE_BASE64 }}
+          GH_RELEASE_STORE_PASSWORD: ${{ secrets.GH_RELEASE_STORE_PASSWORD }}
+          GH_RELEASE_KEY_ALIAS: ${{ secrets.GH_RELEASE_KEY_ALIAS }}
+          GH_RELEASE_KEY_PASSWORD: ${{ secrets.GH_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for secret in GH_RELEASE_KEYSTORE_BASE64 GH_RELEASE_STORE_PASSWORD GH_RELEASE_KEY_ALIAS GH_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Required signing secret $secret is not configured. Refusing to compile or upload a release APK."
+              exit 1
+            fi
+          done
+
+          keystore_path="$RUNNER_TEMP/rootless-zach-dsp-release.p12"
+          preflight_dir="$RUNNER_TEMP/signing-preflight"
+          preflight_jar="$RUNNER_TEMP/signing-preflight.jar"
+          rm -rf "$preflight_dir" "$preflight_jar" "$keystore_path"
+          mkdir -p "$preflight_dir"
+
+          printf '%s' "$GH_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+          test -s "$keystore_path" || { echo "::error::Decoded release keystore is empty."; exit 1; }
+
+          keytool -list \
+            -keystore "$keystore_path" \
+            -storepass "$GH_RELEASE_STORE_PASSWORD" \
+            -alias "$GH_RELEASE_KEY_ALIAS" >/dev/null
+
+          printf 'RootlessZachDSP signing preflight\n' > "$preflight_dir/probe.txt"
+          jar --create --file "$preflight_jar" -C "$preflight_dir" probe.txt
+          jarsigner \
+            -keystore "$keystore_path" \
+            -storepass "$GH_RELEASE_STORE_PASSWORD" \
+            -keypass "$GH_RELEASE_KEY_PASSWORD" \
+            "$preflight_jar" "$GH_RELEASE_KEY_ALIAS" >/dev/null
+          jarsigner -verify "$preflight_jar" >/dev/null
+
+          expected_cert_sha256="$(
+            keytool -exportcert \
+              -keystore "$keystore_path" \
+              -storepass "$GH_RELEASE_STORE_PASSWORD" \
+              -alias "$GH_RELEASE_KEY_ALIAS" \
+              | sha256sum | awk '{print toupper($1)}'
+          )"
+          test -n "$expected_cert_sha256" || { echo "::error::Could not derive signing certificate fingerprint."; exit 1; }
+
+          echo "GH_RELEASE_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          echo "GH_RELEASE_CERT_SHA256=$expected_cert_sha256" >> "$GITHUB_ENV"
+          echo "Signing material validated before compilation; expected certificate SHA-256: $expected_cert_sha256"
+
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android release toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+
+      - name: Compile and package signed privacy-first release APKs
+        shell: bash
+        env:
+          GH_RELEASE_STORE_PASSWORD: ${{ secrets.GH_RELEASE_STORE_PASSWORD }}
+          GH_RELEASE_KEY_ALIAS: ${{ secrets.GH_RELEASE_KEY_ALIAS }}
+          GH_RELEASE_KEY_PASSWORD: ${{ secrets.GH_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -s "$GH_RELEASE_KEYSTORE_PATH" || { echo "::error::Validated release keystore is unavailable."; exit 1; }
+          ./gradlew --stacktrace assembleRootlessFdroidRelease
+
+      - name: Verify certificate, identity, 16 KiB alignment, and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/rootlessFdroid/release"
+          VERIFY_DIR="ci-artifacts/release-verification"
+          mkdir -p "$VERIFY_DIR"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          test "${#APKS[@]}" -gt 0 || { echo "No release APKs found" >&2; exit 1; }
+          : > "$APK_DIR/SHA256SUMS.txt"
+
+          for apk in "${APKS[@]}"; do
+            name="$(basename "$apk")"
+            report="$VERIFY_DIR/${name}.apksigner.txt"
+            echo "Verifying $name"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$report"
+
+            actual_cert_sha256="$(
+              awk -F': ' '/Signer #[0-9]+ certificate SHA-256 digest:/ {print toupper($2); exit}' "$report" \
+                | tr -d '[:space:]:'
+            )"
+            test -n "$actual_cert_sha256" || { echo "::error::No signer certificate found in $name."; exit 1; }
+            if [ "$actual_cert_sha256" != "$GH_RELEASE_CERT_SHA256" ]; then
+              echo "::error::Signing certificate mismatch for $name. Expected $GH_RELEASE_CERT_SHA256, got $actual_cert_sha256."
+              exit 1
+            fi
+
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" \
+              "$VERIFY_DIR/${name}.badging.txt"
+            sha256sum "$apk" >> "$APK_DIR/SHA256SUMS.txt"
+          done
+
+      - name: Upload certificate-verified signed release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RootlessZachDSP-signed-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/rootlessFdroid/release/*.apk
+            app/build/outputs/apk/rootlessFdroid/release/SHA256SUMS.txt
+            ci-artifacts/release-verification/**
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RootlessZachDSP ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          files: |
+            app/build/outputs/apk/rootlessFdroid/release/*.apk
+            app/build/outputs/apk/rootlessFdroid/release/SHA256SUMS.txt
+
+      - name: Remove signing material from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${GH_RELEASE_KEYSTORE_PATH:-}" "$RUNNER_TEMP/signing-preflight.jar"
+          rm -rf "$RUNNER_TEMP/signing-preflight"

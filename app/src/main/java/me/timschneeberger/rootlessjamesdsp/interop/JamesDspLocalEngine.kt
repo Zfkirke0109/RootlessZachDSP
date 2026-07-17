@@ -2,6 +2,9 @@ package me.timschneeberger.rootlessjamesdsp.interop
 
 import android.content.Context
 import android.content.Intent
+import me.timschneeberger.rootlessjamesdsp.BuildConfig
+import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
+import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
 import me.timschneeberger.rootlessjamesdsp.interop.structure.EelVmVariable
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -11,6 +14,16 @@ import kotlin.concurrent.schedule
 
 class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspCallbacks? = null) : JamesDspBaseEngine(context, callbacks) {
     var handle: JamesDspHandle = JamesDspWrapper.alloc(callbacks ?: DummyCallbacks())
+
+    private val signalTelemetry = if (BuildConfig.ROOTLESS) {
+        AudioSignalTelemetry(
+            hashSeed = System.nanoTime() xor handle,
+            hashStride = LIVE_SIGNAL_HASH_STRIDE,
+        )
+    } else {
+        null
+    }
+    private var lastSignalPublishNanos = 0L
 
     override var sampleRate: Float
         set(value) {
@@ -24,9 +37,14 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     init {
         if(BenchmarkManager.hasBenchmarksCached())
             BenchmarkManager.loadBenchmarksFromCache()
+        if (BuildConfig.ROOTLESS) RootlessZachDiagnostics.beginEngineEpoch()
     }
 
     override fun close() {
+        signalTelemetry?.snapshot()?.takeIf { it.sampleCount > 0L }?.let {
+            RootlessZachDiagnostics.publishSignal(it)
+        }
+
         val oldHandle = handle
         handle = 0
 
@@ -52,6 +70,7 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         else {
             JamesDspWrapper.processInt16(handle, input, output, offset, length)
         }
+        recordInt16Signal(input, output, offset, length)
     }
 
     fun processInt32(input: IntArray, output: IntArray, offset: Int = -1, length: Int = -1)
@@ -84,7 +103,60 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         else {
             JamesDspWrapper.processFloat(handle, input, output, offset, length)
         }
+        recordFloatSignal(input, output, offset, length)
     }
+
+    private fun recordInt16Signal(
+        input: ShortArray,
+        output: ShortArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+        telemetry.recordShort(input, range.inputOffset, output, range.outputOffset, range.samples)
+        publishSignalIfDue(telemetry)
+    }
+
+    private fun recordFloatSignal(
+        input: FloatArray,
+        output: FloatArray,
+        offset: Int,
+        length: Int,
+    ) {
+        val telemetry = signalTelemetry ?: return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+        telemetry.recordFloat(input, range.inputOffset, output, range.outputOffset, range.samples)
+        publishSignalIfDue(telemetry)
+    }
+
+    private fun publishSignalIfDue(telemetry: AudioSignalTelemetry) {
+        val now = System.nanoTime()
+        if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
+        RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
+        lastSignalPublishNanos = now
+    }
+
+    private fun resolveSignalRange(
+        inputSize: Int,
+        outputSize: Int,
+        offset: Int,
+        length: Int,
+    ): SignalRange? {
+        if (offset < 0 && length < 0) {
+            val samples = minOf(inputSize, outputSize)
+            return samples.takeIf { it > 0 }?.let { SignalRange(0, 0, it) }
+        }
+        if (offset < 0 || length <= 0 || offset >= inputSize) return null
+        val samples = minOf(length, inputSize - offset, outputSize)
+        return samples.takeIf { it > 0 }?.let { SignalRange(offset, 0, it) }
+    }
+
+    private data class SignalRange(
+        val inputOffset: Int,
+        val outputOffset: Int,
+        val samples: Int,
+    )
 
     // Effect config
     override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
@@ -180,5 +252,10 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     override fun freezeLiveprogExecution(freeze: Boolean)
     {
         JamesDspWrapper.freezeLiveprogExecution(handle, freeze)
+    }
+
+    companion object {
+        private const val SIGNAL_PUBLISH_INTERVAL_NANOS = 1_000_000_000L
+        private const val LIVE_SIGNAL_HASH_STRIDE = 16
     }
 }
