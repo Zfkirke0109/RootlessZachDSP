@@ -22,7 +22,6 @@ env:
 
 jobs:
   settings-navigation:
-    if: github.event_name == 'push'
     name: Apply device patch and validate final commit
     runs-on: ubuntu-latest
     timeout-minutes: 90
