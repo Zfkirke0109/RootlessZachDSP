@@ -13,6 +13,7 @@ import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.diagnostics.CompatibilityDiagnosticsReport
 import me.timschneeberger.rootlessjamesdsp.diagnostics.DiagnosticsLeakScanner
 import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
+import me.timschneeberger.rootlessjamesdsp.diagnostics.SourceFidelityAssessment
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
 import java.io.File
 
@@ -21,6 +22,12 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.app_diagnostics_preferences, rootKey)
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_source_fidelity))
+            ?.setOnPreferenceClickListener {
+                showSourceFidelity()
+                true
+            }
 
         findPreference<Preference>(getString(R.string.key_diagnostics_recent_events))
             ?.setOnPreferenceClickListener {
@@ -58,6 +65,7 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
         val transport = RootlessZachDiagnostics.latestTransportSnapshot()
         val engineSignal = RootlessZachDiagnostics.latestSignalSnapshot()
         val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
+        val sourceFidelity = SourceFidelityAssessment.assess(trackInputSignal?.outputPeak)
         val file = RootlessZachDiagnostics.latestDiagnosticsFile()
         val recentCount = RootlessZachDiagnostics.readRecentLines(200).size
         findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
@@ -89,6 +97,18 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
                     append(" activeBytes=").append(file?.takeIf { it.exists() }?.length() ?: 0L)
                 }
             }
+        findPreference<Preference>(getString(R.string.key_diagnostics_source_fidelity))?.summary =
+            sourceFidelity.compactString()
+    }
+
+    private fun showSourceFidelity() {
+        val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
+        val message = SourceFidelityAssessment.renderUserSummary(trackInputSignal?.outputPeak)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_source_fidelity_dialog_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun showRecentEvents() {
