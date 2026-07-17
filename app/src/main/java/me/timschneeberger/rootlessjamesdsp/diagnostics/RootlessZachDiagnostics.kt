@@ -36,6 +36,7 @@ object RootlessZachDiagnostics {
 
     // Accessed only by the diagnostics writer thread.
     private var lastPersistedTransportSnapshot: AudioTransportTelemetry.Snapshot? = null
+    private var lastPersistedSignalSnapshot: AudioSignalTelemetry.Snapshot? = null
 
     private val buildIdentity = DiagnosticBuildIdentity(
         applicationId = BuildConfig.APPLICATION_ID,
@@ -65,7 +66,10 @@ object RootlessZachDiagnostics {
     fun beginEngineEpoch() {
         engineEpoch = newEpoch()
         signalSnapshot.set(null)
-        writer.execute { lastPersistedTransportSnapshot = null }
+        writer.execute {
+            lastPersistedTransportSnapshot = null
+            lastPersistedSignalSnapshot = null
+        }
         ensureWriterStarted()
     }
 
@@ -81,6 +85,7 @@ object RootlessZachDiagnostics {
             runCatching { diagnosticsStore()?.clear() }
                 .onFailure { Timber.w(it, "Unable to clear RootlessZach diagnostics history") }
             lastPersistedTransportSnapshot = null
+            lastPersistedSignalSnapshot = null
             droppedEventCount.set(0L)
         }
     }
@@ -106,11 +111,15 @@ object RootlessZachDiagnostics {
         val current = transportSnapshot.get() ?: return
         val currentSignal = signalSnapshot.get()
         val previous = lastPersistedTransportSnapshot
+        val previousSignal = lastPersistedSignalSnapshot
 
         // The writer remains alive for the application process. Once audio processing stops, the
-        // latest atomic snapshots intentionally remain available to the report UI, but they must
-        // not be appended again every five seconds with only a newer wall-clock timestamp.
-        if (previous?.capturedAtNanos == current.capturedAtNanos) return
+        // latest atomic snapshots intentionally remain available to the report UI. Persist a final
+        // signal-only update once, but do not append exact transport-and-signal duplicates every
+        // five seconds with only a newer wall-clock timestamp.
+        val transportUnchanged = previous?.capturedAtNanos == current.capturedAtNanos
+        val signalUnchanged = previousSignal?.capturedAtNanos == currentSignal?.capturedAtNanos
+        if (transportUnchanged && signalUnchanged) return
 
         val droppedBeforeWrite = droppedEventCount.get()
         val nowMs = System.currentTimeMillis()
@@ -179,6 +188,7 @@ object RootlessZachDiagnostics {
         try {
             diagnosticsStore()?.appendLines(lines) ?: return
             lastPersistedTransportSnapshot = current
+            lastPersistedSignalSnapshot = currentSignal
             if (droppedBeforeWrite > 0L) {
                 droppedEventCount.addAndGet(-droppedBeforeWrite)
             }
