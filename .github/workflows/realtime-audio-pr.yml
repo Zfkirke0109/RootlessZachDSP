@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 concurrency:
   group: realtime-audio-pr-${{ github.event.pull_request.number || github.ref }}
@@ -23,7 +21,7 @@ env:
 jobs:
   apply-test-build:
     outputs:
-      patch_error: ${{ steps.capture_patch_error.outputs.patch_error }}
+      failure_tail: ${{ steps.capture_failure.outputs.failure_tail }}
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -68,52 +66,35 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          exec > >(tee "$GITHUB_WORKSPACE/checkpoint-apply.log") 2>&1
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64
-          import gzip
-          import os
-
-          workflow = Path('.github/workflows/realtime-audio-checkpoint.yml').read_text(encoding='utf-8').splitlines()
-          marker = '          PATCH_GZIP_BASE64: |'
-          start = workflow.index(marker) + 1
-          payload = []
-          for line in workflow[start:]:
-              if not line.startswith('            '):
-                  break
-              payload.append(line[12:].strip())
-          if not payload:
-              raise RuntimeError('Embedded real-time checkpoint payload is empty')
-          compressed = base64.b64decode(''.join(payload), validate=True)
-          script = gzip.decompress(compressed)
-          target = Path(os.environ['RUNNER_TEMP']) / 'apply_realtime_checkpoint.py'
-          target.write_bytes(script)
-          print(f'Extracted guarded patch script: {len(script)} bytes')
-          PY
+          exec > >(tee "$GITHUB_WORKSPACE/checkpoint.log") 2>&1
+          cat .github/checkpoint-payload/realtime-source-00.part \
+              .github/checkpoint-payload/realtime-source-01.part \
+              .github/checkpoint-payload/realtime-source-02.part \
+              .github/checkpoint-payload/realtime-source-03.part \
+              .github/checkpoint-payload/realtime-source-04.part \
+              .github/checkpoint-payload/realtime-source-05.part \
+              .github/checkpoint-payload/realtime-source-06.part \
+              > "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          test "$(wc -c < "$RUNNER_TEMP/apply_realtime_checkpoint.py")" -eq 42078
+          python3 -m py_compile "$RUNNER_TEMP/apply_realtime_checkpoint.py"
           sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' "$RUNNER_TEMP/apply_realtime_checkpoint.py"
           python3 "$RUNNER_TEMP/apply_realtime_checkpoint.py"
-          status=$?
-          rm -f "$RUNNER_TEMP/apply_realtime_checkpoint.py"
-          if [ "$status" -eq 0 ]; then
-            git diff --check
-            git status --short
-          fi
-          exit "$status"
+          git diff --check
+          git status --short
 
-      - name: Capture exact guarded patch failure
-        id: capture_patch_error
+      - name: Capture exact failure tail
+        id: capture_failure
         if: always()
         shell: bash
         run: |
           {
-            echo 'patch_error<<RZDSP_PATCH_ERROR'
-            if [ -f checkpoint-apply.log ]; then
-              tail -n 80 checkpoint-apply.log
+            echo 'failure_tail<<RZDSP_FAILURE_TAIL'
+            if [ -f checkpoint.log ]; then
+              tail -n 100 checkpoint.log
             else
-              echo 'checkpoint-apply.log was not created; failure occurred before the guarded Python patch command.'
+              echo 'checkpoint.log was not created.'
             fi
-            echo 'RZDSP_PATCH_ERROR'
+            echo 'RZDSP_FAILURE_TAIL'
           } >> "$GITHUB_OUTPUT"
 
       - name: Enforce patch application
@@ -121,15 +102,44 @@ jobs:
         run: exit 1
 
       - name: Run deterministic unit tests
-        run: ./gradlew --stacktrace --console=plain testRootlessFdroidDebugUnitTest
+        id: unit_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --stacktrace --console=plain testRootlessFdroidDebugUnitTest 2>&1 | tee -a checkpoint.log
+
+      - name: Enforce unit tests
+        if: steps.unit_tests.outcome == 'failure'
+        run: exit 1
 
       - name: Run lint
-        run: ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug 2>&1 | tee -a checkpoint.log
+
+      - name: Enforce lint
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
 
       - name: Build installable ARM64-capable debug APK
-        run: ./gradlew --stacktrace --console=plain assembleRootlessFdroidDebug
+        id: build_apk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --stacktrace --console=plain assembleRootlessFdroidDebug 2>&1 | tee -a checkpoint.log
+
+      - name: Enforce APK build
+        if: steps.build_apk.outcome == 'failure'
+        run: exit 1
 
       - name: Verify identity, signature, 16 KiB alignment, and SHA-256
+        id: verify_apk
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -152,6 +162,10 @@ jobs:
             sha256sum "$apk" | tee -a "$VERIFY_DIR/SHA256SUMS.txt"
           done
 
+      - name: Enforce APK verification
+        if: steps.verify_apk.outcome == 'failure'
+        run: exit 1
+
       - name: Commit validated checkpoint
         id: commit
         shell: bash
@@ -159,7 +173,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -rf .github/checkpoint-payload
           rm -f .github/workflows/realtime-audio-checkpoint.yml .github/workflows/realtime-audio-pr.yml
+          rm -f checkpoint.log
           git add -A
           git diff --cached --check
           git commit -m "perf(audio): align buffers and offload diagnostics"
@@ -177,15 +193,15 @@ jobs:
             app/build/reports/lint-results-*
             ci-artifacts/realtime-checkpoint/**
 
-  report-apply-failure:
+  report-failure:
     needs: apply-test-build
     if: failure()
     runs-on: ubuntu-latest
     steps:
-      - name: Print exact guarded patch failure
+      - name: Print exact checkpoint failure tail
         shell: bash
         env:
-          PATCH_ERROR: ${{ needs.apply-test-build.outputs.patch_error }}
+          FAILURE_TAIL: ${{ needs.apply-test-build.outputs.failure_tail }}
         run: |
-          printf '%s\n' "$PATCH_ERROR"
+          printf '%s\n' "$FAILURE_TAIL"
           exit 1
