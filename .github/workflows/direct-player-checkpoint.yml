@@ -1,0 +1,234 @@
+name: Direct Player USB Checkpoint
+
+on:
+  pull_request:
+    branches: ["develop/rootless-zach-foundation"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: direct-player-checkpoint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+
+jobs:
+  integrate-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out Direct Player branch and submodules
+        uses: actions/checkout@v4
+        with:
+          ref: feature/direct-player-usb-bit-perfect
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android tools
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+
+      - name: Wire Direct Player into app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_name: str, old: str, new: str) -> None:
+              path = Path(path_name)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path_name}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'app/build.gradle.kts',
+              '    implementation("androidx.mediarouter:mediarouter:1.7.0")\n',
+              '    implementation("androidx.mediarouter:mediarouter:1.7.0")\n'
+              '    implementation("androidx.media3:media3-exoplayer:1.10.0")\n',
+          )
+
+          settings_path = Path('app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/settings/SettingsFragment.kt')
+          settings = settings_path.read_text(encoding='utf-8')
+          settings = settings.replace(
+              'import android.os.Bundle\n',
+              'import android.content.Intent\nimport android.os.Bundle\n',
+              1,
+          )
+          settings = settings.replace(
+              'import me.timschneeberger.rootlessjamesdsp.R\n',
+              'import me.timschneeberger.rootlessjamesdsp.R\n'
+              'import me.timschneeberger.rootlessjamesdsp.activity.DirectPlayerActivity\n',
+              1,
+          )
+          settings = settings.replace(
+              '    private val processing by lazy { findPreference<Preference>(getString(R.string.key_audio_format)) }\n',
+              '    private val processing by lazy { findPreference<Preference>(getString(R.string.key_audio_format)) }\n'
+              '    private val directPlayer by lazy { findPreference<Preference>(getString(R.string.key_direct_player)) }\n',
+              1,
+          )
+          settings = settings.replace(
+              '        diagnostics?.isVisible = isRootless()\n',
+              '        diagnostics?.isVisible = isRootless()\n'
+              '        directPlayer?.isVisible = isRootless()\n'
+              '        directPlayer?.setOnPreferenceClickListener {\n'
+              '            startActivity(Intent(requireContext(), DirectPlayerActivity::class.java))\n'
+              '            true\n'
+              '        }\n',
+              1,
+          )
+          settings_path.write_text(settings, encoding='utf-8')
+
+          replace_once(
+              'app/src/main/res/xml/app_preferences.xml',
+              '''    <Preference
+                  app:key="@string/key_device_profiles"
+          ''',
+              '''    <Preference
+                  app:key="@string/key_direct_player"
+                  app:title="@string/direct_player_title"
+                  app:summary="@string/direct_player_settings_summary"
+                  app:icon="@drawable/ic_twotone_volume_up_24dp" />
+
+              <Preference
+                  app:key="@string/key_device_profiles"
+          ''',
+          )
+
+          replace_once(
+              'app/src/main/AndroidManifest.xml',
+              '''        <activity
+                  android:name=".activity.BlocklistActivity"
+          ''',
+              '''        <activity
+                  android:name=".activity.DirectPlayerActivity"
+                  android:exported="false"
+                  android:label="@string/direct_player_title"
+                  android:theme="@style/Theme.RootlessJamesDSP">
+                  <meta-data
+                      android:name="android.support.PARENT_ACTIVITY"
+                      android:value=".activity.SettingsActivity" />
+              </activity>
+
+              <activity
+                  android:name=".activity.BlocklistActivity"
+          ''',
+          )
+
+          handoff = Path('docs/AGENT_HANDOFF.md')
+          handoff_text = handoff.read_text(encoding='utf-8').rstrip()
+          marker = '## 2026-07-17 Direct Player and USB checkpoint'
+          if marker not in handoff_text:
+              handoff_text += '''
+
+          ## 2026-07-17 Direct Player and USB checkpoint
+
+          - Branch: `feature/direct-player-usb-bit-perfect`
+          - Parent foundation head: `8f0b9fd520584ae091e21e6976d43ad167dc07e3`
+          - PR #1 and the performance PR remain draft and unmerged.
+          - MQA result: no decoder approved for redistribution; the FOSS registry is intentionally empty.
+          - Implemented: source-owning Media3 player, local lossless inspection, optional decoder boundary,
+            exact API 34 USB mixer matching, preference read-back verification, hot-unplug cleanup, unit
+            tests, instrumentation navigation test, legal audit, and architecture documentation.
+          - Claim boundary: compressed FLAC/ALAC can be high-resolution lossless but cannot be called
+            bit-perfect until the decoded PCM format is independently verified.
+          - Physical status: blocked on Galaxy S23 Ultra plus external USB DAC validation.
+          - Next action: add decoded-output format observation and run the physical USB acceptance matrix.
+          '''
+          handoff.write_text(handoff_text + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          git status --short
+
+      - name: Run unit tests
+        run: ./gradlew --stacktrace --console=plain testRootlessFdroidDebugUnitTest
+
+      - name: Compile instrumentation APK
+        run: ./gradlew --stacktrace --console=plain assembleRootlessFdroidDebugAndroidTest
+
+      - name: Run lint
+        run: ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug
+
+      - name: Build installable APK
+        run: ./gradlew --stacktrace --console=plain assembleRootlessFdroidDebug
+
+      - name: Verify APK and compute checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/rootlessFdroid/debug"
+          VERIFY_DIR="direct-player-verification"
+          mkdir -p "$VERIFY_DIR"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          test "${#APKS[@]}" -gt 0
+          : > "$VERIFY_DIR/SHA256SUMS.txt"
+          for apk in "${APKS[@]}"; do
+            name="$(basename "$apk")"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" \
+              > "$VERIFY_DIR/${name}.apksigner.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp.debug'" "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" "$VERIFY_DIR/${name}.badging.txt"
+            sha256sum "$apk" | tee -a "$VERIFY_DIR/SHA256SUMS.txt"
+          done
+
+      - name: Commit validated Direct Player checkpoint
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/direct-player-checkpoint.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(player): add lawful lossless USB player foundation"
+          git push origin HEAD:feature/direct-player-usb-bit-perfect
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Direct Player APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RootlessZachDSP-direct-player-${{ steps.commit.outputs.sha }}
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/rootlessFdroid/debug/*.apk
+            app/build/outputs/apk/androidTest/rootlessFdroid/debug/*.apk
+            app/build/reports/tests/**
+            app/build/reports/lint-results-*
+            direct-player-verification/**
