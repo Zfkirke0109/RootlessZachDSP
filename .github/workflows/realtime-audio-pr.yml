@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: realtime-audio-pr-${{ github.event.pull_request.number || github.ref }}
@@ -91,25 +93,23 @@ jobs:
           if-no-files-found: warn
           path: checkpoint-apply.log
 
-      - name: Persist concise patch failure evidence
+      - name: Report concise patch failure on the draft PR
         if: steps.apply_patch.outcome == 'failure'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           {
-            echo '# Real-time audio checkpoint patch failure'
+            echo '### Guarded patch application failed'
             echo
-            echo 'The guarded source patch failed before tests or source commit.'
+            echo 'No source checkpoint was committed. Exact failure:'
             echo
             echo '```text'
-            tail -n 120 checkpoint-apply.log
+            tail -n 80 checkpoint-apply.log
             echo '```'
-          } > docs/REALTIME_CHECKPOINT_FAILURE.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/REALTIME_CHECKPOINT_FAILURE.md
-          git commit -m "ci: record realtime patch failure"
-          git push origin HEAD:perf/realtime-audio-diagnostics
+          } > "$RUNNER_TEMP/realtime-patch-failure.md"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "$RUNNER_TEMP/realtime-patch-failure.md"
 
       - name: Enforce patch application
         if: steps.apply_patch.outcome == 'failure'
