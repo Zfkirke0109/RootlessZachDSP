@@ -93,24 +93,6 @@ jobs:
           if-no-files-found: warn
           path: checkpoint-apply.log
 
-      - name: Report concise patch failure on the draft PR
-        if: steps.apply_patch.outcome == 'failure'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          {
-            echo '### Guarded patch application failed'
-            echo
-            echo 'No source checkpoint was committed. Exact failure:'
-            echo
-            echo '```text'
-            tail -n 80 checkpoint-apply.log
-            echo '```'
-          } > "$RUNNER_TEMP/realtime-patch-failure.md"
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file "$RUNNER_TEMP/realtime-patch-failure.md"
-
       - name: Enforce patch application
         if: steps.apply_patch.outcome == 'failure'
         run: exit 1
@@ -171,3 +153,19 @@ jobs:
             app/build/reports/tests/**
             app/build/reports/lint-results-*
             ci-artifacts/realtime-checkpoint/**
+
+  report-apply-failure:
+    needs: apply-test-build
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download guarded patch log
+        uses: actions/download-artifact@v4
+        with:
+          name: realtime-patch-log-${{ github.run_id }}
+      - name: Print exact guarded patch failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat checkpoint-apply.log
+          exit 1
