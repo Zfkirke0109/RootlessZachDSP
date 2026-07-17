@@ -122,8 +122,13 @@ jobs:
             app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
           grep -F 'finalSystemMixMeasured: Boolean = false' \
             app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/SourceFidelityAssessment.kt
-          if git grep -Ei '(libmqa|mqa.*\.so|mqa.*\.aar|mqa.*\.jar|mqa.*\.bin)' -- ':!docs/**' ':!*.md'; then
-            echo "Unexpected MQA binary/library reference detected" >&2
+
+          if find app -type f \( -iname '*mqa*.so' -o -iname '*mqa*.aar' -o -iname '*mqa*.jar' -o -iname '*mqa*.bin' \) | grep -q .; then
+            echo "Unexpected MQA binary/library file detected" >&2
+            exit 1
+          fi
+          if git grep -Ei 'System\.loadLibrary\([^)]*mqa|implementation[^[:space:]]*.*mqa' -- app; then
+            echo "Unexpected MQA runtime or dependency integration detected" >&2
             exit 1
           fi
           if git ls-files | grep -Ei '\.(jks|keystore|p12|pfx)$'; then
