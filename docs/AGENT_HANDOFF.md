@@ -200,3 +200,16 @@ The foundation remains draft until:
 - Active Samsung/Dolby/third-party effect state cannot be reliably enumerated through public APIs,
   so reports warn about the unobservable pre/post system effect chain instead of guessing.
 
+
+## 2026-07-17 real-time audio optimization branch
+
+- Branch: `perf/realtime-audio-diagnostics`
+- Parent foundation head: `8f0b9fd520584ae091e21e6976d43ad167dc07e3`
+- PR #1 remains draft and unmerged.
+- Scope: HAL-burst-aligned adaptive buffering, representative signal telemetry, bounded/coalesced
+  background publication, lock-free single-writer transport counters, and buffered JSONL batches.
+- Required CI: `testRootlessFdroidDebugUnitTest`, `lintRootlessFdroidDebug`,
+  `assembleRootlessFdroidDebug`, package/signature/16 KiB alignment verification, and SHA-256.
+- Physical status: blocked on installation and testing on the Galaxy S23 Ultra.
+- Next checkpoint after device evidence: startup-priming versus runtime-starvation accounting and
+  allocation-free per-stage DSP timing exported from the native engine.

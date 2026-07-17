@@ -1,3 +1,4 @@
+
 package me.timschneeberger.rootlessjamesdsp.diagnostics
 
 import org.junit.Assert.assertEquals
@@ -24,6 +25,45 @@ class RotatingJsonlStoreTest {
             assertTrue(store.rotatedFile().exists())
             assertEquals(listOf("{\"a\":1}", "{\"b\":2}"), store.rotatedFile().readLines())
             assertEquals(listOf("{\"c\":3}"), store.activeFile().readLines())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `one append call batches lines and still rotates on a generation boundary`() {
+        val directory = Files.createTempDirectory("rzdsp-jsonl-batch").toFile()
+        try {
+            val store = RotatingJsonlStore(
+                directory = directory,
+                maximumActiveBytes = 16,
+                maximumLineBytes = 64,
+            )
+
+            store.appendLines(listOf("{\"a\":1}", "{\"b\":2}", "{\"c\":3}"))
+
+            assertEquals(listOf("{\"a\":1}", "{\"b\":2}"), store.rotatedFile().readLines())
+            assertEquals(listOf("{\"c\":3}"), store.activeFile().readLines())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `event storm remains complete with one buffered batch`() {
+        val directory = Files.createTempDirectory("rzdsp-jsonl-storm").toFile()
+        try {
+            val store = RotatingJsonlStore(
+                directory = directory,
+                maximumActiveBytes = 1_000_000,
+                maximumLineBytes = 256,
+            )
+            val lines = (0 until 10_000).map { "{\"event\":$it}" }
+
+            store.appendLines(lines)
+
+            assertEquals(10_000, store.activeFile().readLines().size)
+            assertFalse(store.rotatedFile().exists())
         } finally {
             directory.deleteRecursively()
         }

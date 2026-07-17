@@ -7,6 +7,7 @@ import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemet
 import timber.log.Timber
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -23,6 +24,8 @@ object RootlessZachDiagnostics {
     private val engineSignalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
     private val trackInputSignalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
     private val writerStarted = AtomicBoolean(false)
+    private val immediateFlushScheduled = AtomicBoolean(false)
+    private val immediateFlushRequested = AtomicBoolean(false)
     private val store = AtomicReference<RotatingJsonlStore?>(null)
     private val droppedEventCount = AtomicLong(0L)
 
@@ -49,7 +52,7 @@ object RootlessZachDiagnostics {
         val previous = transportSnapshot.getAndSet(value)
         ensureWriterStarted()
         if (previous != null && hasImmediateEventIncrease(previous, value)) {
-            writer.execute { flushLatestSafely() }
+            requestImmediateFlush()
         }
     }
 
@@ -118,6 +121,28 @@ object RootlessZachDiagnostics {
             PERSIST_INTERVAL_SECONDS,
             TimeUnit.SECONDS,
         )
+    }
+
+    private fun requestImmediateFlush() {
+        immediateFlushRequested.set(true)
+        if (!immediateFlushScheduled.compareAndSet(false, true)) return
+
+        try {
+            writer.execute {
+                try {
+                    while (immediateFlushRequested.getAndSet(false)) {
+                        flushLatestSafely()
+                    }
+                } finally {
+                    immediateFlushScheduled.set(false)
+                    if (immediateFlushRequested.get()) requestImmediateFlush()
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            immediateFlushScheduled.set(false)
+            droppedEventCount.incrementAndGet()
+            Timber.w(error, "RootlessZach diagnostics writer rejected an immediate flush")
+        }
     }
 
     private fun flushLatestSafely() {

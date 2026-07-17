@@ -988,3 +988,18 @@ Every PR must include:
 - physical-device validation status stated honestly;
 - rollback instructions;
 - updated agent handoff.
+
+
+## Execution checkpoint: real-time transport and diagnostics
+
+Branch `perf/realtime-audio-diagnostics` begins the prerequisite performance work before Milestone A:
+
+- derives adaptive alignment from the actual HAL burst rather than a fixed 128-sample boundary;
+- keeps the user-selected size as an initial preference instead of a permanent adaptive minimum;
+- moves periodic snapshot formatting, diagnostics publication, and broadcast delivery to a coalescing worker;
+- gates pre/post signal scans before touching PCM arrays and measures representative blocks;
+- removes monitor acquisition from the single-writer transport counter path;
+- coalesces immediate JSONL flush requests and batches each generation through one buffered stream.
+
+CI validation does not constitute Galaxy S23 Ultra physical validation. Device acceptance still requires
+speaker, Bluetooth, USB, route-change, lock-screen, thermal, and long-play testing.

@@ -1,3 +1,4 @@
+
 package me.timschneeberger.rootlessjamesdsp.diagnostics
 
 import java.io.File
@@ -39,22 +40,32 @@ class RotatingJsonlStore(
         if (lines.isEmpty()) return
         ensureDirectory()
 
-        lines.forEach { line ->
-            val normalized = normalizeLine(line)
-            val bytes = "$normalized\n".toByteArray(StandardCharsets.UTF_8)
+        val encodedLines = lines.map { line ->
+            val bytes = "${normalizeLine(line)}\n".toByteArray(StandardCharsets.UTF_8)
             require(bytes.size <= maximumLineBytes) {
                 "Diagnostic line exceeds maximumLineBytes ($maximumLineBytes)"
             }
-
-            if (activeFile.exists() && activeFile.length() + bytes.size > maximumActiveBytes) {
-                rotate()
+            require(bytes.size.toLong() <= maximumActiveBytes) {
+                "Diagnostic line exceeds maximumActiveBytes ($maximumActiveBytes)"
             }
-
-            FileOutputStream(activeFile, true).use { output ->
-                output.write(bytes)
-                output.flush()
-            }
+            bytes
         }
+
+        var projectedBytes = if (activeFile.exists()) activeFile.length() else 0L
+        val pending = ArrayList<ByteArray>(encodedLines.size)
+
+        encodedLines.forEach { bytes ->
+            if (projectedBytes > 0L && projectedBytes + bytes.size > maximumActiveBytes) {
+                appendBatch(pending)
+                pending.clear()
+                rotate()
+                projectedBytes = 0L
+            }
+            pending += bytes
+            projectedBytes += bytes.size
+        }
+
+        appendBatch(pending)
     }
 
     @Synchronized
@@ -86,6 +97,15 @@ class RotatingJsonlStore(
 
     fun rotatedFile(): File = rotatedFile
 
+    private fun appendBatch(lines: Collection<ByteArray>) {
+        if (lines.isEmpty()) return
+        FileOutputStream(activeFile, true)
+            .buffered(DEFAULT_STREAM_BUFFER_BYTES)
+            .use { output ->
+                lines.forEach(output::write)
+            }
+    }
+
     private fun ensureDirectory() {
         if (!directory.exists() && !directory.mkdirs() && !directory.exists()) {
             error("Unable to create diagnostics directory")
@@ -109,5 +129,6 @@ class RotatingJsonlStore(
         const val DEFAULT_ACTIVE_FILE_NAME = "rootless_audio_events.jsonl"
         const val DEFAULT_MAXIMUM_ACTIVE_BYTES = 5L * 1024L * 1024L
         const val DEFAULT_MAXIMUM_LINE_BYTES = 256 * 1024
+        private const val DEFAULT_STREAM_BUFFER_BYTES = 64 * 1024
     }
 }

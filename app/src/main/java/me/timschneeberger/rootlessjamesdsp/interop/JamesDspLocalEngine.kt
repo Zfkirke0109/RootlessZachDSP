@@ -113,9 +113,14 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         length: Int,
     ) {
         val telemetry = signalTelemetry ?: return
+        val now = System.nanoTime()
+        if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
         val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+
+        telemetry.reset(now xor handle)
         telemetry.recordShort(input, range.inputOffset, output, range.outputOffset, range.samples)
-        publishSignalIfDue(telemetry)
+        RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
+        lastSignalPublishNanos = now
     }
 
     private fun recordFloatSignal(
@@ -125,14 +130,12 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
         length: Int,
     ) {
         val telemetry = signalTelemetry ?: return
-        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
-        telemetry.recordFloat(input, range.inputOffset, output, range.outputOffset, range.samples)
-        publishSignalIfDue(telemetry)
-    }
-
-    private fun publishSignalIfDue(telemetry: AudioSignalTelemetry) {
         val now = System.nanoTime()
         if (now - lastSignalPublishNanos < SIGNAL_PUBLISH_INTERVAL_NANOS) return
+        val range = resolveSignalRange(input.size, output.size, offset, length) ?: return
+
+        telemetry.reset(now xor handle)
+        telemetry.recordFloat(input, range.inputOffset, output, range.outputOffset, range.samples)
         RootlessZachDiagnostics.publishSignal(telemetry.snapshot())
         lastSignalPublishNanos = now
     }

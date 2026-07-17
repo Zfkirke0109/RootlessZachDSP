@@ -32,6 +32,7 @@ import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.audio.capture.CapturePolicyStore
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AdaptiveBufferController
+import me.timschneeberger.rootlessjamesdsp.audio.transport.CoalescingSnapshotWorker
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransferResult
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransfers
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
@@ -129,6 +130,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         hashStride = TRACK_INPUT_SIGNAL_HASH_STRIDE,
     )
     private var lastTrackInputSignalPublishNanos = 0L
+    private var telemetryWorker: CoalescingSnapshotWorker<AudioTransportTelemetry.Snapshot>? = null
     private val capturePolicyStore by lazy { CapturePolicyStore(this) }
 
     private val preferences: Preferences.App by inject()
@@ -161,6 +163,20 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
         engine = JamesDspLocalEngine(this, ProcessorMessageHandler())
         engine.syncWithPreferences()
+
+        val telemetryContext = applicationContext
+        telemetryWorker = CoalescingSnapshotWorker(
+            name = TELEMETRY_THREAD_NAME,
+            snapshotProvider = transportTelemetry::snapshot,
+            publisher = { snapshot ->
+                RootlessZachDiagnostics.publish(snapshot)
+                telemetryContext.sendLocalBroadcast(Intent(ACTION_TRANSPORT_TELEMETRY_UPDATED))
+                Timber.i("RZDSP_TELEMETRY %s", snapshot.compactString())
+            },
+            errorHandler = { error ->
+                Timber.w(error, "Unable to publish rootless transport telemetry")
+            },
+        )
 
         val filter = IntentFilter().apply {
             addAction(ACTION_PREFERENCES_UPDATED)
@@ -225,6 +241,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     override fun onDestroy() {
         isServiceDisposing = true
         stopRecording()
+        telemetryWorker?.flushAndClose()
+        telemetryWorker = null
         engine.close()
         stopForeground(STOP_FOREGROUND_REMOVE)
         sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STOPPED))
@@ -407,15 +425,19 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             else -> Short.SIZE_BYTES
         }
         val sampleRate = clamp(determineSamplingRate(), 44_100, 48_000)
-        val halBurstSamples = determineBufferSize() * CHANNEL_COUNT
-        val minimumAdaptiveSamples = max(
-            configuredBufferSamples,
-            halBurstSamples * MIN_HAL_BURSTS,
-        ).coerceAtMost(MAX_BUFFER_SAMPLES)
-        val adaptiveBufferController = AdaptiveBufferController(
-            minimumSamples = minimumAdaptiveSamples,
-            initialSamples = minimumAdaptiveSamples,
+        val bufferPolicy = AdaptiveBufferController.burstAlignedPolicy(
+            framesPerBurst = determineBufferSize(),
+            channelCount = CHANNEL_COUNT,
+            configuredSamples = configuredBufferSamples,
             maximumSamples = MAX_BUFFER_SAMPLES,
+            minimumBursts = MIN_HAL_BURSTS,
+            initialBursts = INITIAL_HAL_BURSTS,
+        )
+        val adaptiveBufferController = AdaptiveBufferController(
+            minimumSamples = bufferPolicy.minimumSamples,
+            initialSamples = bufferPolicy.initialSamples,
+            maximumSamples = bufferPolicy.maximumSamples,
+            alignmentSamples = bufferPolicy.alignmentSamples,
         )
         val initialPipeline = try {
             createAudioPipeline(
@@ -466,13 +488,13 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         bytesPerSample: Int,
         adaptiveBufferController: AdaptiveBufferController,
     ) {
+        // Notification work must happen before this thread enters urgent-audio priority.
+        ServiceNotificationHelper.pushServiceNotification(applicationContext, arrayOf())
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         } catch (error: RuntimeException) {
             Timber.w(error, "Unable to set urgent-audio thread priority")
         }
-
-        ServiceNotificationHelper.pushServiceNotification(applicationContext, arrayOf())
         var pipeline = initialPipeline
         var buffers = AudioBuffers(pipeline.bufferSamples)
         var bufferDeadlineNanos = AdaptiveBufferController.bufferDurationNanos(
@@ -687,18 +709,22 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
                 val now = System.nanoTime()
                 if (now - lastTelemetryPublishNanos >= TELEMETRY_INTERVAL_NANOS) {
-                    val snapshot = transportTelemetry.snapshot()
-                    RootlessZachDiagnostics.publish(snapshot)
-                    sendLocalBroadcast(Intent(ACTION_TRANSPORT_TELEMETRY_UPDATED))
-                    Timber.i("RZDSP_TELEMETRY %s", snapshot.compactString())
-                    val underrunDelta = (snapshot.underrunCount - previousUnderrunCount).coerceAtLeast(0)
-                    val deadlineDelta = (snapshot.deadlineMissCount - previousDeadlineMissCount)
-                        .coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    telemetryWorker?.requestPublish()
+
+                    val currentUnderrunCount = transportTelemetry.currentUnderrunCount()
+                    val currentDeadlineMissCount = transportTelemetry.currentDeadlineMissCount()
+                    val underrunDelta =
+                        (currentUnderrunCount - previousUnderrunCount).coerceAtLeast(0)
+                    val deadlineDelta =
+                        (currentDeadlineMissCount - previousDeadlineMissCount)
+                            .coerceAtLeast(0L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
                     val decision = adaptiveBufferController.observe(
                         AdaptiveBufferController.Observation(
-                            underrunDelta,
-                            deadlineDelta,
-                            snapshot.processingLoadEwma,
+                            underrunDelta = underrunDelta,
+                            deadlineMissDelta = deadlineDelta,
+                            processingLoadRatio = transportTelemetry.currentProcessingLoadEwma(),
                         ),
                     )
                     if (decision.changed && !rebuildAfterCurrentBuffer) {
@@ -707,8 +733,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                             decision.newSamples,
                         )
                     }
-                    previousUnderrunCount = snapshot.underrunCount
-                    previousDeadlineMissCount = snapshot.deadlineMissCount
+                    previousUnderrunCount = currentUnderrunCount
+                    previousDeadlineMissCount = currentDeadlineMissCount
                     lastTelemetryPublishNanos = now
                 }
             }
@@ -774,6 +800,14 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     }
 
     private fun recordAudioTrackInputSignal(encoding: AudioEncoding, buffers: AudioBuffers) {
+        val now = System.nanoTime()
+        if (now - lastTrackInputSignalPublishNanos < TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS) {
+            return
+        }
+
+        audioTrackInputTelemetry.reset(
+            now xor System.identityHashCode(this).toLong(),
+        )
         if (encoding == AudioEncoding.PcmShort) {
             audioTrackInputTelemetry.recordShort(
                 buffers.shortDry,
@@ -787,11 +821,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 buffers.sampleCount,
             )
         }
-        val now = System.nanoTime()
-        if (now - lastTrackInputSignalPublishNanos >= TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS) {
-            RootlessZachDiagnostics.publishTrackInputSignal(audioTrackInputTelemetry.snapshot())
-            lastTrackInputSignalPublishNanos = now
-        }
+        RootlessZachDiagnostics.publishTrackInputSignal(audioTrackInputTelemetry.snapshot())
+        lastTrackInputSignalPublishNanos = now
     }
 
     private fun publishFinalAudioTrackInputSignal() {
@@ -1027,10 +1058,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         const val EXTRA_APP_COMPAT_INTERNAL_CALL = "appCompatInternalCall"
 
         private const val AUDIO_THREAD_NAME = "RootlessZachAudio"
+        private const val TELEMETRY_THREAD_NAME = "RootlessZachTelemetry"
         private const val CHANNEL_COUNT = 2
         private const val MIN_BUFFER_SAMPLES = 128
         private const val MAX_BUFFER_SAMPLES = 16_384
-        private const val MIN_HAL_BURSTS = 2
+        private const val MIN_HAL_BURSTS = 8
+        private const val INITIAL_HAL_BURSTS = 16
         private const val CROSSFADE_DURATION_MS = 24
         private const val DEADLINE_MISSES_BEFORE_BYPASS = 3
         private const val DSP_BYPASS_COOLDOWN_NANOS = 2_000_000_000L
