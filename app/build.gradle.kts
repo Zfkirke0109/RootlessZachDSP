@@ -250,10 +250,14 @@ dependencies {
     implementation(project(":hidden-api-impl"))
 
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.10")
-    debugImplementation("com.plutolib:pluto:2.0.9")
+
+    // Pluto 2.0.9's runtime lifecycle callbacks retain destroyed activities/fragments on
+    // Android 16. Keep the API-compatible no-op artifacts in every build type while the app's
+    // own Diagnostics, LeakCanary, StrictMode, Timber, and private JSONL reports remain active.
+    debugImplementation("com.plutolib:pluto-no-op:2.0.9")
     "previewImplementation"("com.plutolib:pluto-no-op:2.0.9")
     releaseImplementation("com.plutolib:pluto-no-op:2.0.9")
-    debugImplementation("com.plutolib.plugins:bundle-core:2.0.9")
+    debugImplementation("com.plutolib.plugins:bundle-core-no-op:2.0.9")
     "previewImplementation"("com.plutolib.plugins:bundle-core-no-op:2.0.9")
     releaseImplementation("com.plutolib.plugins:bundle-core-no-op:2.0.9")
 
