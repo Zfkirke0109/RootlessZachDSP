@@ -1,0 +1,167 @@
+                Math.multiplyExact(alignment, initialBursts),
+            )
+            val initial =
+                alignUp(requestedInitial.coerceAtMost(maximum), alignment)
+                    .coerceIn(minimum, maximum)
+
+            return BurstPolicy(
+                minimumSamples = minimum,
+                initialSamples = initial,
+                maximumSamples = maximum,
+                alignmentSamples = alignment,
+            )
+        }
+
+        fun bufferDurationNanos(interleavedSamples: Int, sampleRate: Int, channelCount: Int): Long {
+            require(interleavedSamples >= 0 && sampleRate > 0 && channelCount > 0)
+            val frames = interleavedSamples.toDouble() / channelCount
+            return ((frames / sampleRate) * 1_000_000_000.0).toLong()
+        }
+
+        private fun alignUp(samples: Int, alignment: Int): Int {
+            val value = samples.toLong()
+            val aligned = ((value + alignment - 1L) / alignment) * alignment
+            require(aligned <= Int.MAX_VALUE) { "aligned sample count exceeds Int range" }
+            return aligned.toInt()
+        }
+
+        private fun alignDown(samples: Int, alignment: Int): Int =
+            (samples / alignment) * alignment
+    }
+}
+''',
+)
+
+write_text(
+    "app/src/test/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AdaptiveBufferControllerTest.kt",
+    r'''
+package me.timschneeberger.rootlessjamesdsp.audio.transport
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AdaptiveBufferControllerTest {
+    @Test
+    fun `grows after repeated pressure`() {
+        val controller = AdaptiveBufferController(
+            minimumSamples = 384,
+            initialSamples = 768,
+            maximumSamples = 3_072,
+            alignmentSamples = 384,
+            pressureIntervalsBeforeGrow = 2,
+        )
+
+        assertFalse(controller.observe(AdaptiveBufferController.Observation(underrunDelta = 1)).changed)
+        val decision = controller.observe(AdaptiveBufferController.Observation(underrunDelta = 1))
+
+        assertTrue(decision.changed)
+        assertEquals(1_536, controller.currentSamples)
+        assertEquals(AdaptiveBufferController.Reason.UNDERRUN, decision.reason)
+        assertEquals(0, controller.currentSamples % 384)
+    }
+
+    @Test
+    fun `stable load shrinks cautiously but never below independent minimum`() {
+        val controller = AdaptiveBufferController(
+            minimumSamples = 3_072,
+            initialSamples = 16_128,
+            maximumSamples = 16_128,
+            alignmentSamples = 384,
+            stableIntervalsBeforeShrink = 2,
+        )
+
+        assertFalse(controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1)).changed)
+        assertTrue(controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1)).changed)
+        assertEquals(8_064, controller.currentSamples)
+
+        repeat(8) {
+            controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1))
+        }
+
+        assertEquals(3_072, controller.currentSamples)
+        assertEquals(0, controller.currentSamples % 384)
+    }
+
+    @Test
+    fun `s23 ultra policy uses exact 192-frame stereo burst multiples`() {
+        val policy = AdaptiveBufferController.burstAlignedPolicy(
+            framesPerBurst = 192,
+            channelCount = 2,
+            configuredSamples = 16_384,
+            maximumSamples = 16_384,
+            minimumBursts = 8,
+            initialBursts = 16,
+        )
+
+        assertEquals(384, policy.alignmentSamples)
+        assertEquals(3_072, policy.minimumSamples)
+        assertEquals(16_128, policy.initialSamples)
+        assertEquals(16_128, policy.maximumSamples)
+        assertEquals(0, policy.minimumSamples % policy.alignmentSamples)
+        assertEquals(0, policy.initialSamples % policy.alignmentSamples)
+        assertEquals(0, policy.maximumSamples % policy.alignmentSamples)
+    }
+
+    @Test
+    fun `configured size influences initial target but not adaptive minimum`() {
+        val policy = AdaptiveBufferController.burstAlignedPolicy(
+            framesPerBurst = 192,
+            channelCount = 2,
+            configuredSamples = 7_000,
+            minimumBursts = 8,
+            initialBursts = 16,
+        )
+
+        assertEquals(3_072, policy.minimumSamples)
+        assertEquals(7_296, policy.initialSamples)
+    }
+
+    @Test
+    fun `duration accounts for interleaved channels`() {
+        assertEquals(10_000_000L, AdaptiveBufferController.bufferDurationNanos(960, 48_000, 2))
+    }
+}
+''',
+)
+
+write_text(
+    "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/CoalescingSnapshotWorker.kt",
+    r'''
+package me.timschneeberger.rootlessjamesdsp.audio.transport
+
+import java.io.Closeable
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.LockSupport
+
+/**
+ * A single bounded handoff from a real-time producer to a lower-priority publisher.
+ *
+ * The producer only sets an atomic flag and unparks an already-created worker thread. Repeated
+ * requests collapse into one pending publication, so an event storm cannot create an unbounded
+ * executor queue.
+ */
+class CoalescingSnapshotWorker<T>(
+    name: String,
+    private val snapshotProvider: () -> T,
+    private val publisher: (T) -> Unit,
+    private val errorHandler: (Throwable) -> Unit = {},
+) : Closeable {
+    private val publishRequested = AtomicBoolean(false)
+    private val closed = AtomicBoolean(false)
+    private val worker = Thread(::runLoop, name).apply {
+        isDaemon = true
+        priority = (Thread.NORM_PRIORITY - 1).coerceAtLeast(Thread.MIN_PRIORITY)
+        start()
+    }
+
+    fun requestPublish() {
+        if (closed.get()) return
+        publishRequested.set(true)
+        LockSupport.unpark(worker)
+    }
+
+    /**
+     * Requests one final snapshot and waits briefly for the worker to release references.
+     *
