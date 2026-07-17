@@ -1,0 +1,133 @@
+service_path = "app/src/main/java/me/timschneeberger/rootlessjamesdsp/service/RootlessAudioProcessorService.kt"
+replace_once(
+    service_path,
+    "import me.timschneeberger.rootlessjamesdsp.audio.transport.AdaptiveBufferController\n",
+    "import me.timschneeberger.rootlessjamesdsp.audio.transport.AdaptiveBufferController\n"
+    "import me.timschneeberger.rootlessjamesdsp.audio.transport.CoalescingSnapshotWorker\n",
+)
+replace_once(
+    service_path,
+    "    private var lastTrackInputSignalPublishNanos = 0L\n"
+    "    private val capturePolicyStore by lazy { CapturePolicyStore(this) }\n",
+    "    private var lastTrackInputSignalPublishNanos = 0L\n"
+    "    private var telemetryWorker: CoalescingSnapshotWorker<AudioTransportTelemetry.Snapshot>? = null\n"
+    "    private val capturePolicyStore by lazy { CapturePolicyStore(this) }\n",
+)
+replace_once(
+    service_path,
+    "        engine = JamesDspLocalEngine(this, ProcessorMessageHandler())\n"
+    "        engine.syncWithPreferences()\n\n"
+    "        val filter = IntentFilter().apply {\n",
+    r'''        engine = JamesDspLocalEngine(this, ProcessorMessageHandler())
+        engine.syncWithPreferences()
+
+        val telemetryContext = applicationContext
+        telemetryWorker = CoalescingSnapshotWorker(
+            name = TELEMETRY_THREAD_NAME,
+            snapshotProvider = transportTelemetry::snapshot,
+            publisher = { snapshot ->
+                RootlessZachDiagnostics.publish(snapshot)
+                telemetryContext.sendLocalBroadcast(Intent(ACTION_TRANSPORT_TELEMETRY_UPDATED))
+                Timber.i("RZDSP_TELEMETRY %s", snapshot.compactString())
+            },
+            errorHandler = { error ->
+                Timber.w(error, "Unable to publish rootless transport telemetry")
+            },
+        )
+
+        val filter = IntentFilter().apply {
+''',
+)
+replace_once(
+    service_path,
+    "        isServiceDisposing = true\n"
+    "        stopRecording()\n"
+    "        engine.close()\n",
+    "        isServiceDisposing = true\n"
+    "        stopRecording()\n"
+    "        telemetryWorker?.flushAndClose()\n"
+    "        telemetryWorker = null\n"
+    "        engine.close()\n",
+)
+replace_once(
+    service_path,
+    r'''        val sampleRate = clamp(determineSamplingRate(), 44_100, 48_000)
+        val halBurstSamples = determineBufferSize() * CHANNEL_COUNT
+        val minimumAdaptiveSamples = max(
+            configuredBufferSamples,
+            halBurstSamples * MIN_HAL_BURSTS,
+        ).coerceAtMost(MAX_BUFFER_SAMPLES)
+        val adaptiveBufferController = AdaptiveBufferController(
+            minimumSamples = minimumAdaptiveSamples,
+            initialSamples = minimumAdaptiveSamples,
+            maximumSamples = MAX_BUFFER_SAMPLES,
+        )
+''',
+    r'''        val sampleRate = clamp(determineSamplingRate(), 44_100, 48_000)
+        val bufferPolicy = AdaptiveBufferController.burstAlignedPolicy(
+            framesPerBurst = determineBufferSize(),
+            channelCount = CHANNEL_COUNT,
+            configuredSamples = configuredBufferSamples,
+            maximumSamples = MAX_BUFFER_SAMPLES,
+            minimumBursts = MIN_HAL_BURSTS,
+            initialBursts = INITIAL_HAL_BURSTS,
+        )
+        val adaptiveBufferController = AdaptiveBufferController(
+            minimumSamples = bufferPolicy.minimumSamples,
+            initialSamples = bufferPolicy.initialSamples,
+            maximumSamples = bufferPolicy.maximumSamples,
+            alignmentSamples = bufferPolicy.alignmentSamples,
+        )
+''',
+)
+replace_once(
+    service_path,
+    r'''    ) {
+        try {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        } catch (error: RuntimeException) {
+            Timber.w(error, "Unable to set urgent-audio thread priority")
+        }
+
+        ServiceNotificationHelper.pushServiceNotification(applicationContext, arrayOf())
+''',
+    r'''    ) {
+        // Notification work must happen before this thread enters urgent-audio priority.
+        ServiceNotificationHelper.pushServiceNotification(applicationContext, arrayOf())
+        try {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        } catch (error: RuntimeException) {
+            Timber.w(error, "Unable to set urgent-audio thread priority")
+        }
+''',
+)
+replace_once(
+    service_path,
+    r'''                val now = System.nanoTime()
+                if (now - lastTelemetryPublishNanos >= TELEMETRY_INTERVAL_NANOS) {
+                    val snapshot = transportTelemetry.snapshot()
+                    RootlessZachDiagnostics.publish(snapshot)
+                    sendLocalBroadcast(Intent(ACTION_TRANSPORT_TELEMETRY_UPDATED))
+                    Timber.i("RZDSP_TELEMETRY %s", snapshot.compactString())
+                    val underrunDelta = (snapshot.underrunCount - previousUnderrunCount).coerceAtLeast(0)
+                    val deadlineDelta = (snapshot.deadlineMissCount - previousDeadlineMissCount)
+                        .coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    val decision = adaptiveBufferController.observe(
+                        AdaptiveBufferController.Observation(
+                            underrunDelta,
+                            deadlineDelta,
+                            snapshot.processingLoadEwma,
+                        ),
+                    )
+                    if (decision.changed && !rebuildAfterCurrentBuffer) {
+                        scheduleRebuild(
+                            "adaptive buffer ${decision.reason.name.lowercase()}",
+                            decision.newSamples,
+                        )
+                    }
+                    previousUnderrunCount = snapshot.underrunCount
+                    previousDeadlineMissCount = snapshot.deadlineMissCount
+                    lastTelemetryPublishNanos = now
+                }
+''',
+    r'''                val now = System.nanoTime()
