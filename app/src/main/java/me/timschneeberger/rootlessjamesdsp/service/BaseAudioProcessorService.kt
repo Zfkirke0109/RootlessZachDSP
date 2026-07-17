@@ -4,13 +4,26 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
+import java.lang.ref.WeakReference
 
 abstract class BaseAudioProcessorService : Service() {
-    private val binder: IBinder = LocalBinder()
+    private val binder = LocalBinder(this)
 
-    inner class LocalBinder : Binder() {
+    /**
+     * Binder instances can outlive a destroyed Service in Android's native Binder registry.
+     * Keep only a weak reference so a stale local Binder cannot retain the Service instance.
+     */
+    class LocalBinder(service: BaseAudioProcessorService) : Binder() {
+        private val serviceReference = WeakReference(service)
+
         val service: BaseAudioProcessorService
-            get() = this@BaseAudioProcessorService
+            get() = checkNotNull(serviceReference.get()) {
+                "Audio processor service is no longer available"
+            }
+
+        internal fun clearServiceReference() {
+            serviceReference.clear()
+        }
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -23,6 +36,7 @@ abstract class BaseAudioProcessorService : Service() {
     }
 
     override fun onDestroy() {
+        binder.clearServiceReference()
         activeServices--
         super.onDestroy()
     }
