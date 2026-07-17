@@ -54,7 +54,21 @@ jobs:
           PY
 
       - name: Apply device, fidelity, profile, and icon patch
-        run: python .github/scripts/apply_rootless_phase_patch.py
+        shell: bash
+        run: |
+          set +e
+          python .github/scripts/apply_rootless_phase_patch.py > patch-apply.log 2>&1
+          status=$?
+          cat patch-apply.log
+          if [ "$status" -ne 0 ]; then
+            cp patch-apply.log docs/PATCH_FAILURE.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/PATCH_FAILURE.txt
+            git commit -m "chore: capture device patch failure"
+            git push origin HEAD:develop/rootless-zach-foundation
+            exit "$status"
+          fi
 
       - name: Add round launcher icon to the application element
         shell: bash
@@ -81,6 +95,7 @@ jobs:
           rm -f .github/scripts/rootless_icon.b64.part2
           rm -f .github/scripts/rootless_icon.b64.part3
           rm -f .github/workflows/apply-rootless-device-patch.yml
+          rm -f docs/PATCH_FAILURE.txt
           git show HEAD^:.github/workflows/settings-navigation-ui.yml \
             > .github/workflows/settings-navigation-ui.yml
 
