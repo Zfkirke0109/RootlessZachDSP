@@ -59,9 +59,11 @@ jobs:
             "$ANDROID_CMAKE_PACKAGE"
 
       - name: Apply guarded real-time audio patch
+        id: apply_patch
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set -o pipefail
           awk '
             /PATCH_GZIP_BASE64: \|/ { capture=1; next }
             capture && /^        run: \|/ { capture=0 }
@@ -72,10 +74,38 @@ jobs:
             | gzip --decompress \
             > "$RUNNER_TEMP/apply_realtime_checkpoint.py"
           sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' "$RUNNER_TEMP/apply_realtime_checkpoint.py"
-          python3 "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          python3 "$RUNNER_TEMP/apply_realtime_checkpoint.py" 2>&1 | tee "$GITHUB_WORKSPACE/checkpoint-apply.log"
+          status=${PIPESTATUS[0]}
           rm -f "$RUNNER_TEMP/apply_realtime_checkpoint.py"
-          git diff --check
-          git status --short
+          if [ "$status" -eq 0 ]; then
+            git diff --check
+            git status --short
+          fi
+          exit "$status"
+
+      - name: Persist concise patch failure evidence
+        if: steps.apply_patch.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '# Real-time audio checkpoint patch failure'
+            echo
+            echo 'The guarded source patch failed before tests or source commit.'
+            echo
+            echo '```text'
+            tail -n 120 checkpoint-apply.log
+            echo '```'
+          } > docs/REALTIME_CHECKPOINT_FAILURE.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/REALTIME_CHECKPOINT_FAILURE.md
+          git commit -m "ci: record realtime patch failure"
+          git push origin HEAD:perf/realtime-audio-diagnostics
+
+      - name: Enforce patch application
+        if: steps.apply_patch.outcome == 'failure'
+        run: exit 1
 
       - name: Run deterministic unit tests
         run: ./gradlew --stacktrace --console=plain testRootlessFdroidDebugUnitTest
