@@ -20,6 +20,7 @@ object CompatibilityDiagnosticsReport {
         context: Context,
         includeSelectedPackageNames: Boolean = false,
         includeOutputDeviceNames: Boolean = false,
+        recentStructuredEventCount: Int? = null,
     ): String {
         val app = context.applicationContext
         val audioManager = app.getSystemService(AudioManager::class.java)
@@ -29,8 +30,11 @@ object CompatibilityDiagnosticsReport {
         val engineSignal = RootlessZachDiagnostics.latestSignalSnapshot()
         val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
         val diagnosticsFile = RootlessZachDiagnostics.latestDiagnosticsFile()
-        val recentStructuredEvents = RootlessZachDiagnostics.readRecentLines(200)
-        val packageInfo = runCatching { app.packageManager.getPackageInfo(app.packageName, 0) }.getOrNull()
+        val countedRecentStructuredEvents =
+            recentStructuredEventCount
+                ?: RootlessZachDiagnostics.readRecentLines(DEFAULT_REPORT_EVENT_LINES).size
+        val packageInfo =
+            runCatching { app.packageManager.getPackageInfo(app.packageName, 0) }.getOrNull()
         val webView = runCatching { WebView.getCurrentWebViewPackage() }.getOrNull()
         val outputDevices = audioManager
             ?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -76,8 +80,14 @@ object CompatibilityDiagnosticsReport {
             }
             appendLine()
             appendLine("[Audio platform]")
-            appendLine("outputSampleRate=${audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE).orEmpty()}")
-            appendLine("framesPerBuffer=${audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER).orEmpty()}")
+            appendLine(
+                "outputSampleRate=" +
+                    audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE).orEmpty(),
+            )
+            appendLine(
+                "framesPerBuffer=" +
+                    audioManager?.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER).orEmpty(),
+            )
             outputDevices.forEachIndexed { index, device ->
                 val name = if (includeOutputDeviceNames) device.productName else "<redacted>"
                 appendLine(
@@ -93,9 +103,15 @@ object CompatibilityDiagnosticsReport {
             appendLine("outputContentType=CONTENT_TYPE_MUSIC")
             appendLine("maximumRootlessSampleRate=48000")
             appendLine("bitPerfect=false")
-            appendLine("bitPerfectReason=Playback capture, DSP, crossfades, gain ramps, and AudioTrack prevent bit identity")
+            appendLine(
+                "bitPerfectReason=Playback capture, DSP, crossfades, gain ramps, " +
+                    "and AudioTrack prevent bit identity",
+            )
             appendLine("highResolutionDriverIncluded=false")
-            appendLine("highResolutionDriverReason=An unrooted app cannot replace Samsung kernel or audio-HAL drivers")
+            appendLine(
+                "highResolutionDriverReason=An unrooted app cannot replace Samsung kernel " +
+                    "or audio-HAL drivers",
+            )
             appendLine("usbOutputPresent=${usbMixerCapabilities.usbOutputPresent}")
             appendLine("usbConfigurableMixerCount=${usbMixerCapabilities.configurableMixerCount}")
             appendLine("usbBitPerfectMixerSupported=${usbMixerCapabilities.bitPerfectSupported}")
@@ -103,13 +119,22 @@ object CompatibilityDiagnosticsReport {
             appendLine("mqaDecoderIncluded=false")
             appendLine("mqaPassthrough=false")
             appendLine("mqaNote=Any licensed source-side decode must happen before PCM capture")
-            appendLine("dolbyAtmosCompatibility=media attributes preserved; final system effect policy remains controlled by Samsung")
+            appendLine(
+                "dolbyAtmosCompatibility=media attributes preserved; final system effect policy " +
+                    "remains controlled by Samsung",
+            )
             appendLine()
             appendLine("[Effect coexistence]")
             appendLine("activeSystemEffectChainObservable=false")
             appendLine("dolbyAtmosStateObservable=false")
-            appendLine("warning=Samsung Dolby Atmos, system EQ, volume leveling, or another audio effect may process audio before capture or after AudioTrack input")
-            appendLine("recommendedValidation=Compare Atmos off/on/auto per speaker, Bluetooth, and USB route while watching clipping and underruns")
+            appendLine(
+                "warning=Samsung Dolby Atmos, system EQ, volume leveling, or another audio effect " +
+                    "may process audio before capture or after AudioTrack input",
+            )
+            appendLine(
+                "recommendedValidation=Compare Atmos off/on/auto per speaker, Bluetooth, and USB " +
+                    "route while watching clipping and underruns",
+            )
             appendLine()
             appendLine("[Rootless transport]")
             appendLine(transport?.compactString() ?: "state=no-telemetry-yet")
@@ -133,14 +158,20 @@ object CompatibilityDiagnosticsReport {
             appendLine("[Structured diagnostics]")
             appendLine("schemaVersion=${AudioDiagnosticJson.SCHEMA_VERSION}")
             appendLine("activeFilePresent=${diagnosticsFile?.exists() == true}")
-            appendLine("activeFileBytes=${diagnosticsFile?.takeIf { it.exists() }?.length() ?: 0L}")
-            appendLine("recentEventCount=${recentStructuredEvents.size}")
+            appendLine(
+                "activeFileBytes=${diagnosticsFile?.takeIf { it.exists() }?.length() ?: 0L}",
+            )
+            appendLine("recentEventCount=$countedRecentStructuredEvents")
             appendLine("storage=app-private-rotating-jsonl")
             appendLine()
             appendLine("[Privacy]")
             appendLine("This report is generated locally and is not uploaded automatically.")
-            appendLine("Output-device names and selected package identities are redacted by default.")
-            appendLine("Structured diagnostics contain technical counters only; raw PCM is never stored.")
+            appendLine(
+                "Output-device names and selected package identities are redacted by default.",
+            )
+            appendLine(
+                "Structured diagnostics contain technical counters only; raw PCM is never stored.",
+            )
             appendLine("locale=${Locale.getDefault().toLanguageTag()}")
         }
     }
@@ -186,7 +217,8 @@ object CompatibilityDiagnosticsReport {
         val formats = attributes
             .map { mixer ->
                 val format = mixer.format
-                "rate:${format.sampleRate},encoding:${format.encoding},channels:${format.channelCount},behavior:${mixer.mixerBehavior}"
+                "rate:${format.sampleRate},encoding:${format.encoding}," +
+                    "channels:${format.channelCount},behavior:${mixer.mixerBehavior}"
             }
             .distinct()
             .sorted()
@@ -210,4 +242,6 @@ object CompatibilityDiagnosticsReport {
         val bitPerfectSupported: Boolean,
         val formats: String,
     )
+
+    private const val DEFAULT_REPORT_EVENT_LINES = 200
 }
