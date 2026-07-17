@@ -51,7 +51,7 @@ function Find-BuildTool {
         return $null
     }
     $candidate = Get-ChildItem -LiteralPath $buildToolsRoot -Directory |
-        Sort-Object Name -Descending |
+        Sort-Object { try { [version]$_.Name } catch { [version]"0.0" } } -Descending |
         ForEach-Object { Join-Path $_.FullName $Name } |
         Where-Object { Test-Path -LiteralPath $_ } |
         Select-Object -First 1
@@ -117,17 +117,20 @@ else {
 
 $installArguments = @()
 $installArguments += Get-AdbPrefix
-$installArguments += @("install", "-r", "-d", $resolvedApk)
+$installArguments += @("install", "-r", $resolvedApk)
 $installOutput = & adb @installArguments 2>&1
 $installOutput | Set-Content -LiteralPath (Join-Path $outputDirectory "adb_install.txt") -Encoding UTF8
 if ($LASTEXITCODE -ne 0 -or ($installOutput | Out-String) -notmatch "Success") {
-    throw "ADB update install failed. Review adb_install.txt. Android will reject signer mismatch."
+    throw "ADB update install failed. Review adb_install.txt. Android will reject signer mismatch or a lower versionCode."
 }
 
 Invoke-AdbText -Arguments @("shell", "dumpsys", "package", $PackageName) |
     Set-Content -LiteralPath (Join-Path $outputDirectory "installed_package.txt") -Encoding UTF8
 $resolvedActivity = (Invoke-AdbText -Arguments @(
-    "shell", "cmd", "package", "resolve-activity", "--brief", $PackageName
+    "shell", "cmd", "package", "resolve-activity", "--brief",
+    "-a", "android.intent.action.MAIN",
+    "-c", "android.intent.category.LAUNCHER",
+    $PackageName
 )).Trim()
 $resolvedActivity | Set-Content -LiteralPath (Join-Path $outputDirectory "resolved_activity.txt") -Encoding UTF8
 
@@ -151,8 +154,22 @@ Invoke-AdbText -Arguments @(
     "shell", "monkey", "-p", $PackageName, "-c", "android.intent.category.LAUNCHER", "1"
 ) | Set-Content -LiteralPath (Join-Path $outputDirectory "launch.txt") -Encoding UTF8
 Start-Sleep -Seconds 8
-Invoke-AdbText -Arguments @("logcat", "-d", "-v", "threadtime", "--pid=$(Invoke-AdbText -Arguments @('shell','pidof','-s',$PackageName)).Trim()") |
-    Set-Content -LiteralPath (Join-Path $outputDirectory "cold_launch_logcat.txt") -Encoding UTF8
+
+$appPid = ""
+try {
+    $appPid = (Invoke-AdbText -Arguments @("shell", "pidof", "-s", $PackageName)).Trim()
+}
+catch {
+    $appPid = ""
+}
+if ([string]::IsNullOrWhiteSpace($appPid)) {
+    "Package process was not running after cold launch." |
+        Set-Content -LiteralPath (Join-Path $outputDirectory "cold_launch_logcat.txt") -Encoding UTF8
+}
+else {
+    Invoke-AdbText -Arguments @("logcat", "-d", "-v", "threadtime", "--pid=$appPid") |
+        Set-Content -LiteralPath (Join-Path $outputDirectory "cold_launch_logcat.txt") -Encoding UTF8
+}
 
 @"
 Install verification completed.
@@ -161,6 +178,7 @@ APK: $resolvedApk
 SHA-256: $sha256
 Package: $PackageName
 Resolved activity: $resolvedActivity
+App PID after cold launch: $appPid
 
 The script verified update installation and launcher metadata when aapt was available. It does not
 clear One UI Home data. The optional -RestartSamsungLauncher switch only force-stops the launcher so
@@ -168,6 +186,9 @@ it can reload icon resources; it does not erase the home-screen layout.
 "@ | Set-Content -LiteralPath (Join-Path $outputDirectory "RESULT.txt") -Encoding UTF8
 
 $zipPath = "$outputDirectory.zip"
+if (Test-Path -LiteralPath $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force
+}
 Compress-Archive -Path (Join-Path $outputDirectory "*") -DestinationPath $zipPath -CompressionLevel Optimal
 Write-Host "Install verification passed."
 Write-Host "Results: $outputDirectory"
