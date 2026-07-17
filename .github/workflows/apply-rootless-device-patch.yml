@@ -40,8 +40,36 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Narrow the manifest edit to the application element
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          patcher = Path('.github/scripts/apply_rootless_phase_patch.py')
+          text = patcher.read_text(encoding='utf-8')
+          start = text.index('MANIFEST = "app/src/main/AndroidManifest.xml"')
+          end = text.index('COMPAT = "', start)
+          patcher.write_text(text[:start] + text[end:], encoding='utf-8')
+          PY
+
       - name: Apply device, fidelity, profile, and icon patch
         run: python .github/scripts/apply_rootless_phase_patch.py
+
+      - name: Add round launcher icon to the application element
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          manifest = Path('app/src/main/AndroidManifest.xml')
+          text = manifest.read_text(encoding='utf-8')
+          old = '        android:icon="@mipmap/ic_dsp_launcher"\n        android:label="${label}"\n'
+          new = '        android:icon="@mipmap/ic_dsp_launcher"\n        android:roundIcon="@mipmap/ic_dsp_launcher"\n        android:label="${label}"\n'
+          if old not in text:
+              raise RuntimeError('Application launcher icon sequence not found')
+          manifest.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Remove one-time installer files
         shell: bash
