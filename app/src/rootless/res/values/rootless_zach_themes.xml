@@ -7,7 +7,7 @@
 
     <style name="Theme.RootlessZachDSP.Starting" parent="Theme.SplashScreen.IconBackground">
         <item name="windowSplashScreenBackground">@color/rootless_zach_splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_dsp_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_rootless_zach_launcher</item>
         <item name="windowSplashScreenIconBackgroundColor">@color/rootless_zach_splash_icon_background</item>
         <item name="postSplashScreenTheme">@style/Theme.RootlessZachDSP</item>
     </style>
