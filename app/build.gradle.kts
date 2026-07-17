@@ -25,6 +25,20 @@ android {
         releaseKeyAlias,
         releaseKeyPassword,
     ).all { !it.isNullOrBlank() }
+    val testStorePath = providers.environmentVariable("ROOTLESS_TEST_KEYSTORE_PATH").orNull
+    val testStorePassword = providers.environmentVariable("KEYSTORE_PASSWORD").orNull
+    val testKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull
+    val testKeyPassword = providers.environmentVariable("KEY_PASSWORD").orNull
+    val hasPersistentTestSigning = listOf(
+        testStorePath,
+        testStorePassword,
+        testKeyAlias,
+        testKeyPassword,
+    ).all { !it.isNullOrBlank() }
+    val distributableVersionCode = providers.environmentVariable("VERSION_CODE").orNull
+        ?.toIntOrNull()
+        ?.takeIf { it > AndroidConfig.versionCode }
+        ?: AndroidConfig.versionCode
 
     compileSdk = AndroidConfig.compileSdk
     ndkVersion = "28.2.13676358"
@@ -32,7 +46,7 @@ android {
 
     defaultConfig {
         targetSdk = AndroidConfig.targetSdk
-        versionCode = AndroidConfig.versionCode
+        versionCode = distributableVersionCode
         versionName = AndroidConfig.versionName
         manifestPlaceholders["label"] = rootlessAppLabel
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -76,6 +90,18 @@ android {
                 enableV4Signing = true
             }
         }
+        if (hasPersistentTestSigning) {
+            create("zachTest") {
+                storeFile = file(requireNotNull(testStorePath))
+                storePassword = testStorePassword
+                keyAlias = testKeyAlias
+                keyPassword = testKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -83,6 +109,9 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-${getCommitCount()}"
             manifestPlaceholders["crashlyticsCollectionEnabled"] = "false"
+            if (hasPersistentTestSigning) {
+                signingConfig = signingConfigs.getByName("zachTest")
+            }
         }
         getByName("release") {
             manifestPlaceholders += mapOf("crashlyticsCollectionEnabled" to "false")
@@ -208,6 +237,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.0")
 
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")

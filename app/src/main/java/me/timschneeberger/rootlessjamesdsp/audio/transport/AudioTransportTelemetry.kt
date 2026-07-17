@@ -123,6 +123,8 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     @Volatile
     private var activeTrackUnderrunCount = 0
     @Volatile
+    private var activeTrackUnderrunBaselineEstablished = false
+    @Volatile
     private var trackGeneration = 0
     @Volatile
     private var deadlineMissCount = 0L
@@ -161,6 +163,7 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         bufferSamples = samples
         trackGeneration++
         activeTrackUnderrunCount = 0
+        activeTrackUnderrunBaselineEstablished = false
         resetProcessingWindow()
     }
 
@@ -207,9 +210,20 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
             if (processingLoadEwma == 0.0) ratio else processingLoadEwma * 0.9 + ratio * 0.1
     }
 
-    /** Records the monotonic underrun counter belonging to the currently active AudioTrack. */
+    /**
+     * Records the monotonic underrun counter belonging to the currently active AudioTrack.
+     *
+     * Android may report a priming underrun before a newly created track has completed its first
+     * successful write. The first observed value is therefore treated as the generation baseline;
+     * only subsequent increases are added to the service-wide total.
+     */
     fun recordActiveTrackUnderrunCount(currentCount: Int) {
         val safeCurrent = currentCount.coerceAtLeast(0)
+        if (!activeTrackUnderrunBaselineEstablished) {
+            activeTrackUnderrunCount = safeCurrent
+            activeTrackUnderrunBaselineEstablished = true
+            return
+        }
         underrunCount += (safeCurrent - activeTrackUnderrunCount).coerceAtLeast(0)
         activeTrackUnderrunCount = safeCurrent
     }
@@ -222,6 +236,10 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     }
 
     fun recordRecovery(reason: String) {
+        if (reason == EXPECTED_STABLE_SHRINK_REASON) {
+            recordReconfiguration(reason)
+            return
+        }
         recoveryCount++
         lastRecoveryReason = reason
         lastRecoveryAtNanos = clockNanos()
@@ -342,5 +360,6 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         private const val PROCESSING_WINDOW_CAPACITY = 512
         private const val NANOS_PER_MICROSECOND = 1_000L
         private const val PERCENTILE_DENOMINATOR = 100L
+        private const val EXPECTED_STABLE_SHRINK_REASON = "adaptive buffer stable_shrink"
     }
 }

@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.getSystemService
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import me.timschneeberger.rootlessjamesdsp.MainApplication
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.delegates.ThemingDelegate
@@ -30,6 +31,9 @@ abstract class BaseActivity :
         get() = application as MainApplication
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (this is MainActivity) {
+            installSplashScreen()
+        }
         if(!disableAppTheme)
             applyAppTheme(this)
         prefsApp.registerOnSharedPreferenceChangeListener(this)

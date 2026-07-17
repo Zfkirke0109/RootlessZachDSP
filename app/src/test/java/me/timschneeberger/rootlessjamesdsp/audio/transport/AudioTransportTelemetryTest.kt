@@ -60,4 +60,40 @@ class AudioTransportTelemetryTest {
         assertEquals(0, reset.currentConsecutiveDeadlineMisses)
         assertEquals(0, reset.maxConsecutiveDeadlineMisses)
     }
+
+    @Test
+    fun `new AudioTrack generation baselines its first underrun observation`() {
+        val telemetry = AudioTransportTelemetry()
+        telemetry.configure(48_000, 2, 3_072)
+
+        telemetry.recordActiveTrackUnderrunCount(1)
+        var snapshot = telemetry.snapshot()
+        assertEquals(0, snapshot.underrunCount)
+        assertEquals(1, snapshot.activeTrackUnderrunCount)
+
+        telemetry.recordActiveTrackUnderrunCount(2)
+        snapshot = telemetry.snapshot()
+        assertEquals(1, snapshot.underrunCount)
+        assertEquals(2, snapshot.activeTrackUnderrunCount)
+
+        telemetry.configure(48_000, 2, 6_144)
+        telemetry.recordActiveTrackUnderrunCount(1)
+        snapshot = telemetry.snapshot()
+        assertEquals(1, snapshot.underrunCount)
+        assertEquals(1, snapshot.activeTrackUnderrunCount)
+        assertEquals(2, snapshot.trackGeneration)
+    }
+
+    @Test
+    fun `adaptive stable shrink is recorded as reconfiguration not recovery`() {
+        val telemetry = AudioTransportTelemetry()
+        telemetry.configure(48_000, 2, 6_144)
+
+        telemetry.recordRecovery("adaptive buffer stable_shrink")
+
+        val snapshot = telemetry.snapshot()
+        assertEquals(0L, snapshot.recoveryCount)
+        assertEquals(1L, snapshot.reconfigurationCount)
+        assertEquals("adaptive buffer stable_shrink", snapshot.lastReconfigurationReason)
+    }
 }

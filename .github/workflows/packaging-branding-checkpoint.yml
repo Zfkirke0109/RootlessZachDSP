@@ -1,0 +1,185 @@
+name: Packaging and Branding Checkpoint
+
+on:
+  push:
+    branches: ["fix/packaging-branding-checkpoint"]
+  pull_request:
+    branches: ["perf/long-run-diagnostics-followup"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-branding-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+  KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+  EXPECTED_SIGNER_SHA256: ${{ secrets.EXPECTED_SIGNER_SHA256 }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate and materialize persistent test signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          for secret_name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD EXPECTED_SIGNER_SHA256; do
+            test -n "${!secret_name:-}" || {
+              echo "Missing required GitHub Actions secret: $secret_name" >&2
+              exit 1
+            }
+          done
+
+          KEYSTORE_PATH="$RUNNER_TEMP/rootlesszachdsp.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          echo "ROOTLESS_TEST_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+
+      - name: Unit tests, instrumentation compile, lint, and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence
+          ./gradlew --stacktrace --console=plain \
+            testRootlessFdroidDebugUnitTest \
+            assembleRootlessFdroidDebugAndroidTest \
+            lintRootlessFdroidDebug \
+            assembleRootlessFdroidDebug \
+            2>&1 | tee ci-evidence/gradle-build.log
+
+      - name: Verify package, monotonic version, persistent signer, icon, and splash
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence/apk
+          APK="$(find app/build/outputs/apk/rootlessFdroid/debug -type f -name '*arm64-v8a-debug.apk' | head -n1)"
+          test -n "$APK"
+
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+
+          "$AAPT" dump badging "$APK" | tee ci-evidence/apk/badging.txt
+          grep -F "package: name='com.zfkirke0109.rootlesszachdsp.debug'" ci-evidence/apk/badging.txt
+          grep -F "application-label:'RootlessZachDSP'" ci-evidence/apk/badging.txt
+          grep -F 'ic_rootless_zach_launcher' ci-evidence/apk/badging.txt
+          if grep -F 'application-icon-' ci-evidence/apk/badging.txt | grep -F 'ic_dsp_launcher'; then
+            echo "The launcher still resolves to the upstream debug icon" >&2
+            exit 1
+          fi
+
+          BUILT_VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" ci-evidence/apk/badging.txt | head -n1)"
+          test -n "$BUILT_VERSION_CODE"
+          test "$BUILT_VERSION_CODE" -gt 100
+          test "$BUILT_VERSION_CODE" -eq "$VERSION_CODE"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee ci-evidence/apk/apksigner.txt
+          EXPECTED="$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d '[:space:]:-' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ci-evidence/apk/apksigner.txt | head -n1 | tr -d '[:space:]:-' | tr '[:upper:]' '[:lower:]')"
+          test -n "$EXPECTED"
+          test -n "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || {
+            echo "APK signer certificate does not match EXPECTED_SIGNER_SHA256" >&2
+            exit 1
+          }
+
+          ICON_ENTRY="$(unzip -Z1 "$APK" | grep 'rootless_zach_icon_art\.webp$' | head -n1)"
+          test -n "$ICON_ENTRY"
+          unzip -p "$APK" "$ICON_ENTRY" > ci-evidence/apk/rootless_zach_icon_art.webp
+          ICON_SHA256="$(sha256sum ci-evidence/apk/rootless_zach_icon_art.webp | awk '{print $1}')"
+          test "$ICON_SHA256" = "58e3eddf540dbf2e9e8fe80957db7fcaf9ed5207b1389446a502ac25995beeac"
+          printf '%s  %s\n' "$ICON_SHA256" "$ICON_ENTRY" | tee ci-evidence/apk/ICON_SHA256SUMS.txt
+
+          "$AAPT" dump resources "$APK" | tee ci-evidence/apk/resources.txt >/dev/null
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee ci-evidence/apk/manifest-xmltree.txt >/dev/null
+          "$AAPT" dump xmltree "$APK" res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml \
+            | tee ci-evidence/apk/launcher-xmltree.txt >/dev/null
+
+          LAUNCHER_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:mipmap/ic_rootless_zach_launcher:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*(spec )?resource (0x[0-9a-fA-F]+).*/\2/' | tr '[:upper:]' '[:lower:]')"
+          ICON_ART_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:drawable/rootless_zach_icon_art:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*(spec )?resource (0x[0-9a-fA-F]+).*/\2/' | tr '[:upper:]' '[:lower:]')"
+          test -n "$LAUNCHER_ID"
+          test -n "$ICON_ART_ID"
+
+          MANIFEST_ICON_REFERENCES="$(tr '[:upper:]' '[:lower:]' < ci-evidence/apk/manifest-xmltree.txt | grep -c "@$LAUNCHER_ID")"
+          test "$MANIFEST_ICON_REFERENCES" -ge 3 || {
+            echo "Application, round, and launcher-activity icons did not all resolve to the ZachDSP resource" >&2
+            exit 1
+          }
+          tr '[:upper:]' '[:lower:]' < ci-evidence/apk/launcher-xmltree.txt | grep -F "@$ICON_ART_ID"
+
+          grep -F '@mipmap/ic_rootless_zach_launcher' app/src/rootless/AndroidManifest.xml
+          grep -F '@mipmap/ic_rootless_zach_launcher' app/src/rootless/res/values/rootless_zach_themes.xml
+          grep -F '@drawable/rootless_zach_icon_art' app/src/rootless/res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml
+          grep -F '@drawable/ic_rootless_zach_monochrome' app/src/rootless/res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml
+
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK" | tee ci-evidence/apk/zipalign-16k.txt
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so' | tee ci-evidence/apk/arm64-native-libraries.txt
+          sha256sum "$APK" | tee ci-evidence/apk/SHA256SUMS.txt
+          cp "$APK" ci-evidence/apk/RootlessZachDSP-S23Ultra-packaging-branding-debug.apk
+
+      - name: Verify rootless branding and underrun-accounting guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '<string name="jamesdsp" translatable="false">RootlessZachDSP</string>' \
+            app/src/rootless/res/values/rootless_zach_strings.xml
+          grep -F 'activeTrackUnderrunBaselineEstablished' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioTransportTelemetry.kt
+          grep -F 'EXPECTED_STABLE_SHRINK_REASON' \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioTransportTelemetry.kt
+          if git ls-files | grep -Ei '\.(jks|keystore|p12|pfx)$'; then
+            echo "A private signing key was committed to the repository" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RootlessZachDSP-packaging-branding-${{ github.sha }}
+          path: |
+            ci-evidence/**
+            app/build/reports/tests/testRootlessFdroidDebugUnitTest/**
+            app/build/reports/lint-results-*
+          if-no-files-found: error
+          retention-days: 90
