@@ -103,6 +103,11 @@ jobs:
           "$AAPT" dump badging "$APK" | tee ci-evidence/apk/badging.txt
           grep -F "package: name='com.zfkirke0109.rootlesszachdsp.debug'" ci-evidence/apk/badging.txt
           grep -F "application-label:'RootlessZachDSP'" ci-evidence/apk/badging.txt
+          grep -F 'ic_rootless_zach_launcher' ci-evidence/apk/badging.txt
+          if grep -F 'application-icon-' ci-evidence/apk/badging.txt | grep -F 'ic_dsp_launcher'; then
+            echo "The launcher still resolves to the upstream debug icon" >&2
+            exit 1
+          fi
 
           BUILT_VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" ci-evidence/apk/badging.txt | head -n1)"
           test -n "$BUILT_VERSION_CODE"
@@ -126,14 +131,27 @@ jobs:
           test "$ICON_SHA256" = "58e3eddf540dbf2e9e8fe80957db7fcaf9ed5207b1389446a502ac25995beeac"
           printf '%s  %s\n' "$ICON_SHA256" "$ICON_ENTRY" | tee ci-evidence/apk/ICON_SHA256SUMS.txt
 
-          grep -F '@style/Theme.RootlessZachDSP.Starting' app/src/rootless/AndroidManifest.xml
-          grep -F 'windowSplashScreenAnimatedIcon' app/src/rootless/res/values/rootless_zach_themes.xml
-          grep -F 'postSplashScreenTheme' app/src/rootless/res/values/rootless_zach_themes.xml
-          grep -F '@drawable/ic_rootless_zach_foreground' app/src/rootlessDebug/res/mipmap-anydpi-v26/ic_dsp_launcher.xml
-          if grep -RIn 'DEBUG' app/src/rootlessDebug/res; then
-            echo "Debug banner text remains in the selected RootlessZachDSP icon overlay" >&2
+          "$AAPT" dump resources "$APK" | tee ci-evidence/apk/resources.txt >/dev/null
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee ci-evidence/apk/manifest-xmltree.txt >/dev/null
+          "$AAPT" dump xmltree "$APK" res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml \
+            | tee ci-evidence/apk/launcher-xmltree.txt >/dev/null
+
+          LAUNCHER_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:mipmap/ic_rootless_zach_launcher:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*resource (0x[0-9a-fA-F]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
+          ICON_ART_ID="$(grep -m1 -E 'resource 0x[0-9a-fA-F]+ .*:drawable/rootless_zach_icon_art:' ci-evidence/apk/resources.txt | sed -E 's/^[[:space:]]*resource (0x[0-9a-fA-F]+).*/\1/' | tr '[:upper:]' '[:lower:]')"
+          test -n "$LAUNCHER_ID"
+          test -n "$ICON_ART_ID"
+
+          MANIFEST_ICON_REFERENCES="$(tr '[:upper:]' '[:lower:]' < ci-evidence/apk/manifest-xmltree.txt | grep -c "@$LAUNCHER_ID")"
+          test "$MANIFEST_ICON_REFERENCES" -ge 3 || {
+            echo "Application, round, and launcher-activity icons did not all resolve to the ZachDSP resource" >&2
             exit 1
-          fi
+          }
+          tr '[:upper:]' '[:lower:]' < ci-evidence/apk/launcher-xmltree.txt | grep -F "@$ICON_ART_ID"
+
+          grep -F '@mipmap/ic_rootless_zach_launcher' app/src/rootless/AndroidManifest.xml
+          grep -F '@mipmap/ic_rootless_zach_launcher' app/src/rootless/res/values/rootless_zach_themes.xml
+          grep -F '@drawable/rootless_zach_icon_art' app/src/rootless/res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml
+          grep -F '@drawable/ic_rootless_zach_monochrome' app/src/rootless/res/mipmap-anydpi-v26/ic_rootless_zach_launcher.xml
 
           "$ZIPALIGN" -c -P 16 -v 4 "$APK" | tee ci-evidence/apk/zipalign-16k.txt
           unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so' | tee ci-evidence/apk/arm64-native-libraries.txt
