@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: rootless-zach-settings-ui-${{ github.ref }}
@@ -22,16 +22,19 @@ env:
 
 jobs:
   settings-navigation:
+    if: github.actor != 'github-actions[bot]'
     name: Main screen Settings navigation
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
-      - name: Check out repository and DSP submodules
+      - name: Check out development branch and DSP submodules
         uses: actions/checkout@v4
         with:
+          ref: develop/rootless-zach-foundation
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 2
+          persist-credentials: true
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
@@ -68,6 +71,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Build and run MainActivity Settings navigation test
+        id: navigation_test
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -81,24 +86,24 @@ jobs:
             ./gradlew --stacktrace --info --console=plain connectedRootlessFdroidDebugAndroidTest 2>&1 \
               | tee settings-navigation-gradle.log
 
-      - name: Collect emulator navigation failure evidence
-        if: always()
+      - name: Commit concise failure evidence
+        if: steps.navigation_test.outcome == 'failure'
         shell: bash
         run: |
-          set +e
-          mkdir -p ci-artifacts/settings-navigation
-          cp settings-navigation-gradle.log ci-artifacts/settings-navigation/ 2>/dev/null
-          cp -R app/build/reports/androidTests/connected ci-artifacts/settings-navigation/reports 2>/dev/null
-          cp -R app/build/outputs/androidTest-results/connected ci-artifacts/settings-navigation/results 2>/dev/null
-          find app/build -type f \( -name '*.png' -o -name '*.xml' -o -name '*.html' -o -name '*.txt' \) \
-            -path '*androidTest*' -print0 2>/dev/null \
-            | xargs -0 -r -I{} cp --parents '{}' ci-artifacts/settings-navigation/
+          set -euo pipefail
+          {
+            echo '# Settings navigation instrumentation failure'
+            echo
+            echo '```text'
+            tail -n 500 settings-navigation-gradle.log
+            echo '```'
+          } > docs/SETTINGS_UI_FAILURE.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SETTINGS_UI_FAILURE.md
+          git commit -m "chore: capture Settings instrumentation failure"
+          git push origin HEAD:develop/rootless-zach-foundation
 
-      - name: Upload emulator navigation evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: RootlessZachDSP-settings-navigation-${{ github.run_id }}
-          if-no-files-found: warn
-          retention-days: 14
-          path: ci-artifacts/settings-navigation/**
+      - name: Enforce Settings navigation gate
+        if: steps.navigation_test.outcome == 'failure'
+        run: exit 1
