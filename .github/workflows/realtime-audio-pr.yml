@@ -1,0 +1,134 @@
+name: RootlessZachDSP Realtime Audio PR Gate
+
+on:
+  pull_request:
+    branches: ["develop/rootless-zach-foundation"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: realtime-audio-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_PLATFORM_PACKAGE: platforms;android-36
+  ANDROID_BUILD_TOOLS_PACKAGE: build-tools;36.0.0
+  ANDROID_NDK_PACKAGE: ndk;28.2.13676358
+  ANDROID_CMAKE_PACKAGE: cmake;3.22.1
+
+jobs:
+  apply-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out checkpoint branch and submodules
+        uses: actions/checkout@v4
+        with:
+          ref: perf/realtime-audio-diagnostics
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK, build tools, and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "$ANDROID_PLATFORM_PACKAGE" \
+            "$ANDROID_BUILD_TOOLS_PACKAGE" \
+            "$ANDROID_NDK_PACKAGE" \
+            "$ANDROID_CMAKE_PACKAGE"
+
+      - name: Apply guarded real-time audio patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /PATCH_GZIP_BASE64: \|/ { capture=1; next }
+            capture && /^        run: \|/ { capture=0 }
+            capture { sub(/^            /, ""); print }
+          ' .github/workflows/realtime-audio-checkpoint.yml \
+            | tr -d '[:space:]' \
+            | base64 --decode \
+            | gzip --decompress \
+            > "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          python3 "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          rm -f "$RUNNER_TEMP/apply_realtime_checkpoint.py"
+          git diff --check
+          git status --short
+
+      - name: Run deterministic unit tests
+        run: ./gradlew --stacktrace --console=plain testRootlessFdroidDebugUnitTest
+
+      - name: Run lint
+        run: ./gradlew --stacktrace --console=plain lintRootlessFdroidDebug
+
+      - name: Build installable ARM64-capable debug APK
+        run: ./gradlew --stacktrace --console=plain assembleRootlessFdroidDebug
+
+      - name: Verify identity, signature, 16 KiB alignment, and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/rootlessFdroid/debug"
+          VERIFY_DIR="ci-artifacts/realtime-checkpoint"
+          mkdir -p "$VERIFY_DIR"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          test "${#APKS[@]}" -gt 0 || { echo "No APK found" >&2; exit 1; }
+          : > "$VERIFY_DIR/SHA256SUMS.txt"
+          for apk in "${APKS[@]}"; do
+            name="$(basename "$apk")"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" \
+              > "$VERIFY_DIR/${name}.apksigner.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" \
+              > "$VERIFY_DIR/${name}.zipalign.txt"
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" \
+              > "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "package: name='com.zfkirke0109.rootlesszachdsp.debug'" "$VERIFY_DIR/${name}.badging.txt"
+            grep -q "application-label:'RootlessZachDSP'" "$VERIFY_DIR/${name}.badging.txt"
+            sha256sum "$apk" | tee -a "$VERIFY_DIR/SHA256SUMS.txt"
+          done
+
+      - name: Commit validated checkpoint
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/realtime-audio-checkpoint.yml .github/workflows/realtime-audio-pr.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "perf(audio): align buffers and offload diagnostics"
+          git push origin HEAD:perf/realtime-audio-diagnostics
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installable APK and verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: RootlessZachDSP-realtime-checkpoint-${{ steps.commit.outputs.sha }}
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/rootlessFdroid/debug/*.apk
+            app/build/reports/tests/**
+            app/build/reports/lint-results-*
+            ci-artifacts/realtime-checkpoint/**
