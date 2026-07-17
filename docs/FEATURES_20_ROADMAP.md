@@ -919,6 +919,55 @@ Features 10, 13, 17, and privacy dashboard.
 
 ---
 
+# Cross-cutting fidelity and device-profile requirements
+
+These requirements apply across the 20 feature milestones and must not be marketed beyond what the
+stock Android platform can prove.
+
+## Bit-perfect compatibility mode
+
+- A rootless capture -> DSP -> AudioTrack pipeline is not bit-perfect while processing is active.
+- Add a clearly labeled bypass/relinquish mode for users who prefer a source player or USB DAC's own
+  direct path. The UI must say "bit-perfect eligibility", never guarantee bit-perfect output.
+- Report the exact blockers: capture conversion, sample-rate conversion, DSP, fades, Android mixer,
+  route effects, and volume processing.
+- Acceptance requires byte/hash comparison only on a direct path where Android exposes one.
+
+## High-resolution output capability probe
+
+- Do not bundle or claim a replacement Samsung audio driver. A normal unrooted APK cannot replace
+  the kernel driver, vendor audio HAL, or privileged system policy.
+- Probe supported route sample rates and encodings, attempt high-rate AudioTrack creation behind an
+  experimental flag, and fall back safely to 48 kHz.
+- Keep 96/192 kHz disabled until physical S23 Ultra tests prove stable capture, processing, routing,
+  thermal behavior, and no underrun regression.
+
+## MQA compatibility
+
+- Do not claim an MQA decoder or renderer without licensed, auditable decoder technology.
+- RootlessZachDSP receives PCM from Android playback capture; any source-side decode must occur
+  before capture. The compatibility screen must state that MQA passthrough is unavailable while DSP
+  is active.
+
+## Dolby Atmos coexistence
+
+- Rootless output uses media/music AudioAttributes so Samsung's normal media and Dolby policy can
+  remain eligible.
+- Never silently disable Dolby Atmos. Detect competing effects where possible and warn about
+  double-processing or headroom risk.
+- Device validation must cover Atmos off/on/auto on speakers, Bluetooth, USB, screen lock, and route
+  changes, with captured-input, DSP-output, and final-output measurements.
+
+## Local equipment calibration
+
+- Built-in S23 Ultra speaker and Wrangler 4xe premium-audio entries are conservative unmeasured
+  starting templates, not AutoEQ laboratory corrections.
+- Preserve headroom by default, show provenance, and allow replacement with measured curves.
+- Future calibration should support per-route microphone measurements, target curves, confidence,
+  rollback, and automatic app-plus-route profile selection.
+
+---
+
 # Delivery order and merge gates
 
 1. Complete and physically validate the foundation Settings/session/diagnostics fixes.

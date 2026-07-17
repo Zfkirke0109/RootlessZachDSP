@@ -71,6 +71,7 @@ import org.koin.android.ext.android.inject
 import timber.log.Timber
 import java.io.IOException
 import java.util.Arrays
+import java.lang.ref.WeakReference
 import kotlin.math.max
 
 @RequiresApi(Build.VERSION_CODES.Q)
@@ -81,6 +82,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
     private var mediaProjection: MediaProjection? = null
     private var mediaProjectionStartIntent: Intent? = null
+    private val projectionCallbackHandler = Handler(Looper.getMainLooper())
+    private val projectionCallback = ProjectionCallback(this)
 
     @Volatile
     private var recreateRecorderRequested = false
@@ -138,7 +141,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService<AudioManager>()!!
-        mediaProjectionManager = getSystemService<MediaProjectionManager>()!!
+        mediaProjectionManager = applicationContext.getSystemService<MediaProjectionManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
 
         sessionManager = RootlessSessionManager(this)
@@ -191,6 +194,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         notificationManager.cancel(Notifications.ID_SERVICE_SESSION_LOSS)
         notificationManager.cancel(Notifications.ID_SERVICE_APPCOMPAT)
         mediaProjectionStartIntent = intent.extras?.getParcelableAs(EXTRA_MEDIA_PROJECTION_DATA)
+        releaseMediaProjection()
         mediaProjection = try {
             mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, mediaProjectionStartIntent!!)
         } catch (error: Exception) {
@@ -198,7 +202,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
             null
         }
-        mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+        mediaProjection?.registerCallback(projectionCallback, projectionCallbackHandler)
         if (mediaProjection != null) {
             startRecording()
             sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
@@ -217,8 +221,10 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STOPPED))
         blockedApps.removeObserver(blockedAppObserver)
         unregisterLocalReceiver(broadcastReceiver)
-        mediaProjection?.unregisterCallback(projectionCallback)
-        mediaProjection = null
+        releaseMediaProjection()
+        mediaProjectionStartIntent = null
+        projectionCallback.clear()
+        projectionCallbackHandler.removeCallbacksAndMessages(null)
         sessionManager.sessionPolicyDatabase.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
         sessionManager.sessionDatabase.unregisterOnSessionChangeListener(onSessionChangeListener)
         sessionManager.destroy()
@@ -233,14 +239,33 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         loadFromPreferences(key)
     }
 
-    private val projectionCallback = object : MediaProjection.Callback() {
+    private fun onProjectionStopped() {
+        if (isServiceDisposing || preferencesVar.get<Boolean>(R.string.key_is_activity_active)) return
+        Timber.w("Capture permission revoked. Stopping service.")
+        sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
+        toast(getString(R.string.capture_permission_revoked_toast))
+        notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
+        stopSelf()
+    }
+
+    private fun releaseMediaProjection() {
+        val projection = mediaProjection ?: return
+        mediaProjection = null
+        runCatching { projection.unregisterCallback(projectionCallback) }
+            .onFailure { Timber.d(it, "MediaProjection callback was already unregistered") }
+        runCatching { projection.stop() }
+            .onFailure { Timber.w(it, "Unable to stop MediaProjection cleanly") }
+    }
+
+    private class ProjectionCallback(service: RootlessAudioProcessorService) : MediaProjection.Callback() {
+        private val serviceReference = WeakReference(service)
+
         override fun onStop() {
-            if (isServiceDisposing || preferencesVar.get<Boolean>(R.string.key_is_activity_active)) return
-            Timber.w("Capture permission revoked. Stopping service.")
-            sendLocalBroadcast(Intent(Constants.ACTION_DISCARD_AUTHORIZATION))
-            this@RootlessAudioProcessorService.toast(getString(R.string.capture_permission_revoked_toast))
-            notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
-            stopSelf()
+            serviceReference.get()?.onProjectionStopped()
+        }
+
+        fun clear() {
+            serviceReference.clear()
         }
     }
 
@@ -805,9 +830,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         sampleRate: Int,
         requestedBufferBytes: Int,
     ): AudioTrack {
+        // Declare the processed output as music so Samsung's normal media-route and
+        // Dolby Atmos policy can remain eligible. Capture recursion is still blocked below.
         val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_UNKNOWN)
-            .setContentType(AudioAttributes.CONTENT_TYPE_UNKNOWN)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
             .setFlags(0)
             .apply {
                 sdkAbove(Build.VERSION_CODES.Q) {

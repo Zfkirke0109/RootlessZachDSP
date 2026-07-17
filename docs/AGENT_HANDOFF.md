@@ -168,3 +168,20 @@ The foundation remains draft until:
 - the live service feeds pre/post signal telemetry and proves whether DSP changed the signal;
 - route/background/recovery validation shows no prolonged silence;
 - exported evidence passes privacy review.
+
+## 2026-07-17 physical-device follow-up
+
+- Galaxy S23 Ultra confirmed regular Settings -> Diagnostics access.
+- LeakCanary then found a MediaProjection retention chain keeping a destroyed
+  RootlessAudioProcessorService alive. The next patch uses the application context for
+  MediaProjectionManager, explicitly unregisters and stops MediaProjection, clears handler work,
+  and uses a weak callback.
+- The user-selected galaxy two-slider image is now the launcher artwork.
+- AutoEQ selector includes conservative, explicitly unmeasured local templates for S23 Ultra
+  speakers and 2024–2025 Wrangler 4xe premium audio.
+- Rootless output declares USAGE_MEDIA / CONTENT_TYPE_MUSIC for normal Samsung media and Dolby
+  policy eligibility.
+- MQA decoding, guaranteed bit-perfect output, and a replacement high-resolution Samsung driver are
+  not claimed. These require capability detection, direct-path validation, licensing where
+  applicable, and physical-device proof.
+

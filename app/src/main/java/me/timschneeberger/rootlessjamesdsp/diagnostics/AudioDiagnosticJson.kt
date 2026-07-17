@@ -23,7 +23,7 @@ internal enum class AudioDiagnosticEventType {
 /** Manual JSON encoding keeps the diagnostics foundation dependency-free and testable on the JVM. */
 internal object AudioDiagnosticJson {
     const val SCHEMA_VERSION = 1
-    const val SIGNAL_MEASUREMENT_BOUNDARY = "DRY_INPUT_TO_DSP_ENGINE_OUTPUT"
+    const val SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_DSP_ENGINE_OUTPUT"
 
     fun transportSnapshot(
         snapshot: AudioTransportTelemetry.Snapshot,

@@ -12,6 +12,7 @@ import com.google.android.material.snackbar.Snackbar
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.adapter.AutoEqResultAdapter
 import me.timschneeberger.rootlessjamesdsp.api.AutoEqClient
+import me.timschneeberger.rootlessjamesdsp.audio.profile.LocalEquipmentProfiles
 import me.timschneeberger.rootlessjamesdsp.contract.AutoEqSelectorContract
 import me.timschneeberger.rootlessjamesdsp.databinding.ActivityAeqSelectorBinding
 import me.timschneeberger.rootlessjamesdsp.model.api.AeqSearchResult
@@ -76,7 +77,7 @@ class AeqSelectorActivity : BaseActivity() {
 
         val initialResults = savedInstanceState
             ?.getSerializableAs<Array<AeqSearchResult>>(STATE_RESULTS)
-            ?: arrayOf()
+            ?: LocalEquipmentProfiles.allResults()
 
         val isLoadingOld = savedInstanceState?.getBoolean(STATE_IS_LOADING, false) ?: false
         val isPartialOld = savedInstanceState?.getBoolean(STATE_IS_PARTIAL, false) ?: false
@@ -94,6 +95,14 @@ class AeqSelectorActivity : BaseActivity() {
 
             isLoading = true
             updateViewStates()
+
+            LocalEquipmentProfiles.find(it.id!!)?.let { localProfile ->
+                val response = Intent()
+                response.putExtra(AutoEqSelectorContract.EXTRA_RESULT, localProfile.graphicEq)
+                setResult(RESULT_OK, response)
+                finish()
+                return@ret
+            }
 
             autoEqClient.getProfile(
                 it.id!!,
@@ -130,15 +139,17 @@ class AeqSelectorActivity : BaseActivity() {
     private fun triggerQuery(query: String) {
         isLoading = true
         updateViewStates()
+        val localResults = LocalEquipmentProfiles.search(query)
 
         autoEqClient.queryProfiles(
             query,
             onResponse = { results, isPartial  ->
-                binding.partialResultsCard.bodyText = getString(R.string.autoeq_partial_results_warning, results.size)
+                val combined = localResults + results
+                binding.partialResultsCard.bodyText = getString(R.string.autoeq_partial_results_warning, combined.size)
                 binding.partialResultsCard.isVisible = isPartial
 
                 val adapter = binding.profileList.adapter as AutoEqResultAdapter
-                adapter.results = results
+                adapter.results = combined
                 adapter.notifyDataSetChanged()
 
                 // Replace hint text in empty view
@@ -147,7 +158,20 @@ class AeqSelectorActivity : BaseActivity() {
                 isLoading = false
                 updateViewStates()
             },
-            onFailure = (::handleFailure)
+            onFailure = { error ->
+                if (localResults.isEmpty()) {
+                    handleFailure(error)
+                } else {
+                    val adapter = binding.profileList.adapter as AutoEqResultAdapter
+                    adapter.results = localResults
+                    adapter.notifyDataSetChanged()
+                    binding.partialResultsCard.bodyText =
+                        "AutoEQ online search failed; showing built-in local templates only."
+                    binding.partialResultsCard.isVisible = true
+                    isLoading = false
+                    updateViewStates()
+                }
+            }
         )
     }
 
