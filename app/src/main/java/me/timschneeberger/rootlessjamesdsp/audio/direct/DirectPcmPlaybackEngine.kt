@@ -6,6 +6,7 @@ import android.media.AudioTrack
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import android.os.Build
 import android.os.Process
 import java.io.Closeable
 import java.nio.ByteBuffer
@@ -175,7 +176,12 @@ class DirectPcmPlaybackEngine(
                 session.audioTrack.stop()
             }
         }
-        session.close()
+        // Session is only returned by AndroidUsbBitPerfectController on API 34+, but keep the
+        // platform boundary explicit so cleanup remains lint- and runtime-safe on the app's API 29
+        // minimum.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            session.close()
+        }
     }
 
     companion object {
