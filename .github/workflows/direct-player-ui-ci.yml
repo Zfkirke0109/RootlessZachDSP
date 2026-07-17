@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: direct-player-ui-${{ github.ref }}
@@ -23,7 +23,7 @@ env:
 jobs:
   build-and-static-validation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +46,8 @@ jobs:
             "$ANDROID_BUILD_TOOLS_PACKAGE" \
             "$ANDROID_NDK_PACKAGE" \
             "$ANDROID_CMAKE_PACKAGE"
+      - name: Apply deterministic Direct Player integration
+        run: python3 tools/apply_direct_player_integration.py
       - name: Unit, instrumentation compile, lint, and APK build
         run: |
           ./gradlew --stacktrace --console=plain \
@@ -68,6 +70,7 @@ jobs:
           mkdir -p ci-evidence
           git diff --name-only origin/develop/direct-player-usb-foundation...HEAD \
             | tee ci-evidence/changed-files.txt
+          git diff --name-only | tee -a ci-evidence/changed-files.txt
           if grep -Ei '\.(aar|jar|so|dll|dylib|exe)$' ci-evidence/changed-files.txt; then
             echo "Unexpected binary dependency in Direct Player child diff" >&2
             exit 1
@@ -106,6 +109,22 @@ jobs:
           sha256sum "$APK" | tee ci-evidence/apk/SHA256SUMS.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > ci-evidence/apk/manifest-tree.txt
           grep -F 'DirectPlayerActivity' ci-evidence/apk/manifest-tree.txt
+      - name: Commit validated integration
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add app/build.gradle.kts \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/res/xml/app_preferences.xml \
+            app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/settings/SettingsFragment.kt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(player): integrate Direct Player into rootless app"
+          git push origin HEAD:feature/direct-player-ui
       - uses: actions/upload-artifact@v4
         with:
           name: RootlessZachDSP-direct-player-${{ github.sha }}
@@ -115,7 +134,7 @@ jobs:
 
   emulator-navigation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,6 +156,8 @@ jobs:
             "$ANDROID_BUILD_TOOLS_PACKAGE" \
             "$ANDROID_NDK_PACKAGE" \
             "$ANDROID_CMAKE_PACKAGE"
+      - name: Apply deterministic Direct Player integration
+        run: python3 tools/apply_direct_player_integration.py
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
