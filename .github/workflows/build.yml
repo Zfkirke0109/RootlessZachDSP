@@ -122,8 +122,8 @@ jobs:
           set -euo pipefail
           release_dir="app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          mapfile -t apks < <(find "$release_dir" -maxdepth 1 -type f -name '*-unsigned.apk' -print | sort)
-          test "${#apks[@]}" -gt 0 || { echo "::error::No unsigned APKs found in $release_dir."; exit 1; }
+          mapfile -t apks < <(find "$release_dir" -maxdepth 1 -type f -name '*.apk' ! -name '*-signed.apk' -print | sort)
+          test "${#apks[@]}" -gt 0 || { echo "::error::No APKs found to sign in $release_dir."; exit 1; }
 
           for apk in "${apks[@]}"; do
             signed="${apk%.apk}-signed.apk"
