@@ -22,6 +22,8 @@ env:
 
 jobs:
   apply-test-build:
+    outputs:
+      patch_error: ${{ steps.capture_patch_error.outputs.patch_error }}
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -85,13 +87,20 @@ jobs:
           fi
           exit "$status"
 
-      - name: Upload guarded patch log
+      - name: Capture exact guarded patch failure
+        id: capture_patch_error
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: realtime-patch-log-${{ github.run_id }}
-          if-no-files-found: warn
-          path: checkpoint-apply.log
+        shell: bash
+        run: |
+          {
+            echo 'patch_error<<RZDSP_PATCH_ERROR'
+            if [ -f checkpoint-apply.log ]; then
+              tail -n 80 checkpoint-apply.log
+            else
+              echo 'checkpoint-apply.log was not created; failure occurred before the Python patch command.'
+            fi
+            echo 'RZDSP_PATCH_ERROR'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Enforce patch application
         if: steps.apply_patch.outcome == 'failure'
@@ -159,13 +168,10 @@ jobs:
     if: failure()
     runs-on: ubuntu-latest
     steps:
-      - name: Download guarded patch log
-        uses: actions/download-artifact@v4
-        with:
-          name: realtime-patch-log-${{ github.run_id }}
       - name: Print exact guarded patch failure
         shell: bash
+        env:
+          PATCH_ERROR: ${{ needs.apply-test-build.outputs.patch_error }}
         run: |
-          set -euo pipefail
-          cat checkpoint-apply.log
+          printf '%s\n' "$PATCH_ERROR"
           exit 1
