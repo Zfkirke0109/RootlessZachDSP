@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,14 +135,19 @@ class SettingsFragment : SettingsBaseFragment() {
 ''',
 )
 
-for path in (
+pcm_metadata_paths = (
     "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/direct/DirectPcmPlaybackEngine.kt",
     "app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/direct/DirectSourceInspector.kt",
-):
+)
+for path in pcm_metadata_paths:
     replace_once(
         path,
         "MediaFormat.METADATA_KEY_BITS_PER_SAMPLE",
         '"bits-per-sample"',
     )
+
+# These two files were already committed with a framework constant that is absent from API 36.
+# Stage their validated repair so the gated bot commit cannot leave the branch uncompilable.
+subprocess.run(["git", "add", *pcm_metadata_paths], cwd=ROOT, check=True)
 
 print("Direct Player app integration applied")
