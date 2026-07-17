@@ -84,27 +84,14 @@ jobs:
           manifest.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
-      - name: Remove one-time installer and restore normal UI workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f .github/scripts/apply_rootless_phase_patch.py
-          rm -f .github/scripts/rootless_icon.b64.part0
-          rm -f .github/scripts/rootless_icon.b64.part1
-          rm -f .github/scripts/rootless_icon.b64.part2
-          rm -f .github/scripts/rootless_icon.b64.part3
-          rm -f .github/workflows/apply-rootless-device-patch.yml
-          rm -f docs/PATCH_FAILURE.txt
-          git show HEAD^:.github/workflows/settings-navigation-ui.yml \
-            > .github/workflows/settings-navigation-ui.yml
-
       - name: Commit final source tree
         shell: bash
         run: |
           set -euo pipefail
+          rm -f docs/PATCH_FAILURE.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add app docs
           git diff --cached --check
           git commit -m "fix(rootless): release projection and add device fidelity profiles"
           git push origin HEAD:develop/rootless-zach-foundation
