@@ -23,7 +23,7 @@ internal enum class AudioDiagnosticEventType {
 
 /** Manual JSON encoding keeps the diagnostics foundation dependency-free and testable on the JVM. */
 internal object AudioDiagnosticJson {
-    const val SCHEMA_VERSION = 1
+    const val SCHEMA_VERSION = 2
     const val ENGINE_SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_DSP_ENGINE_OUTPUT"
     const val TRACK_INPUT_SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_AUDIO_TRACK_INPUT"
 
@@ -36,7 +36,7 @@ internal object AudioDiagnosticJson {
         engineEpoch: String,
         wallClockEpochMs: Long,
         droppedEventCount: Long,
-    ): String = buildString(760) {
+    ): String = buildString(960) {
         beginEnvelope(
             type = AudioDiagnosticEventType.TRANSPORT_SNAPSHOT,
             capturedAtNanos = snapshot.capturedAtNanos,
@@ -60,9 +60,15 @@ internal object AudioDiagnosticJson {
         number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
         number("trackGeneration", snapshot.trackGeneration)
         number("deadlineMisses", snapshot.deadlineMissCount)
+        number("deadlineMissStreak", snapshot.currentConsecutiveDeadlineMisses)
+        number("maxDeadlineMissStreak", snapshot.maxConsecutiveDeadlineMisses)
         number("bypassBuffers", snapshot.bypassBufferCount)
         number("lastProcessingNanos", snapshot.lastProcessingNanos)
         number("maxProcessingNanos", snapshot.maxProcessingNanos)
+        number("processingWindowSamples", snapshot.processingWindowSamples)
+        number("processingP50Nanos", snapshot.processingP50Nanos)
+        number("processingP95Nanos", snapshot.processingP95Nanos)
+        number("processingP99Nanos", snapshot.processingP99Nanos)
         decimal("processingLoadEwma", snapshot.processingLoadEwma)
         nullableNumber("lastRecoveryAgeMs", recoveryAgeMs(snapshot))
         nullableNumber("lastReconfigurationAgeMs", reconfigurationAgeMs(snapshot))
@@ -113,7 +119,7 @@ internal object AudioDiagnosticJson {
         build: DiagnosticBuildIdentity,
         engineEpoch: String,
         wallClockEpochMs: Long,
-    ): String = buildString(420) {
+    ): String = buildString(560) {
         require(
             type != AudioDiagnosticEventType.TRANSPORT_SNAPSHOT &&
                 type != AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
@@ -128,11 +134,16 @@ internal object AudioDiagnosticJson {
         number("delta", delta)
         number("bufferSamples", snapshot.bufferSamples)
         decimal("processingLoadEwma", snapshot.processingLoadEwma)
+        number("processingWindowSamples", snapshot.processingWindowSamples)
+        number("processingP95Nanos", snapshot.processingP95Nanos)
+        number("processingP99Nanos", snapshot.processingP99Nanos)
         number("underruns", snapshot.underrunCount)
         number("epochUnderrunDelta", snapshot.underrunCount)
         number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
         number("trackGeneration", snapshot.trackGeneration)
         number("deadlineMisses", snapshot.deadlineMissCount)
+        number("deadlineMissStreak", snapshot.currentConsecutiveDeadlineMisses)
+        number("maxDeadlineMissStreak", snapshot.maxConsecutiveDeadlineMisses)
         number("ioErrors", snapshot.ioErrorCount)
         number("bypassBuffers", snapshot.bypassBufferCount)
         nullableNumber("lastErrorCode", snapshot.lastErrorCode?.toLong())
@@ -149,7 +160,9 @@ internal object AudioDiagnosticJson {
             }
             AudioDiagnosticEventType.UNDERRUN -> {
                 val nearExpectedReconfiguration =
-                    reconfigurationAgeMs(snapshot)?.let { it <= RECONFIGURATION_ASSOCIATION_WINDOW_MS } == true
+                    reconfigurationAgeMs(snapshot)?.let {
+                        it <= RECONFIGURATION_ASSOCIATION_WINDOW_MS
+                    } == true
                 boolean("nearExpectedReconfiguration", nearExpectedReconfiguration)
             }
             else -> Unit
