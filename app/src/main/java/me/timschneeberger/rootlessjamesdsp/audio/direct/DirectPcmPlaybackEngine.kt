@@ -145,7 +145,7 @@ class DirectPcmPlaybackEngine(
             val sampleRate = format.positiveInt(MediaFormat.KEY_SAMPLE_RATE) ?: continue
             val channelCount = format.positiveInt(MediaFormat.KEY_CHANNEL_COUNT) ?: continue
             val encoding = format.positiveInt(MediaFormat.KEY_PCM_ENCODING)
-                ?: inferEncoding(format.positiveInt(MediaFormat.KEY_BITS_PER_SAMPLE))
+                ?: inferEncoding(format.positiveInt(MediaFormat.METADATA_KEY_BITS_PER_SAMPLE))
             val channelMask = when (channelCount) {
                 1 -> AudioFormat.CHANNEL_OUT_MONO
                 2 -> AudioFormat.CHANNEL_OUT_STEREO
