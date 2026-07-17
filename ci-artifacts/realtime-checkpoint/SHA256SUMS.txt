@@ -1,0 +1,5 @@
+2409e2caab2c7edc006136e88c166755f08392409683d68ad7dc4b9e2d5bdf5c  app/build/outputs/apk/rootlessFdroid/debug/RootlessZachDSP-v2.0.0-alpha01-rootless-fdroid-arm64-v8a-debug.apk
+1bb5f4f8ad48a45fec2bdd9dc298b393f8c89be1f0478d3c9307bf7b1af53b9b  app/build/outputs/apk/rootlessFdroid/debug/RootlessZachDSP-v2.0.0-alpha01-rootless-fdroid-armeabi-v7a-debug.apk
+05b527ec30686ce9306cf4f24f3a9d6cf31b4926c092965bcd65a90e3c75aea5  app/build/outputs/apk/rootlessFdroid/debug/RootlessZachDSP-v2.0.0-alpha01-rootless-fdroid-universal-debug.apk
+98a08d41e2794c6b401bc46f363cdf3aa8e4816839e2a9598bc87dcce395626e  app/build/outputs/apk/rootlessFdroid/debug/RootlessZachDSP-v2.0.0-alpha01-rootless-fdroid-x86-debug.apk
+4532811e55b22e276864fb5653ba81d3625125063658cc6e953caeb9d883e99b  app/build/outputs/apk/rootlessFdroid/debug/RootlessZachDSP-v2.0.0-alpha01-rootless-fdroid-x86_64-debug.apk

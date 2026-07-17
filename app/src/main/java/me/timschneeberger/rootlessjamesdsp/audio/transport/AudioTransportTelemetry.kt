@@ -4,7 +4,12 @@ import java.util.Locale
 
 private const val EVENT_REASON_LOG_WINDOW_MS = 10_000L
 
-/** Consistent snapshots of the capture -> DSP -> output transport. */
+/**
+ * Single-writer, multi-reader transport counters.
+ *
+ * The urgent audio thread is the only writer. Snapshot publication happens on a lower-priority
+ * worker and reads volatile fields without taking a monitor that could block the audio path.
+ */
 class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoTime) {
     data class Snapshot(
         val capturedAtNanos: Long,
@@ -76,32 +81,55 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
             (capturedAtNanos - eventAtNanos).coerceAtLeast(0L) / 1_000_000L
     }
 
+    @Volatile
     private var sampleRate = 0
+    @Volatile
     private var channelCount = 0
+    @Volatile
     private var bufferSamples = 0
+    @Volatile
     private var totalReadSamples = 0L
+    @Volatile
     private var totalWrittenSamples = 0L
+    @Volatile
     private var partialReadOperations = 0L
+    @Volatile
     private var partialWriteOperations = 0L
+    @Volatile
     private var zeroProgressOperations = 0L
+    @Volatile
     private var ioErrorCount = 0L
+    @Volatile
     private var recoveryCount = 0L
+    @Volatile
     private var reconfigurationCount = 0L
+    @Volatile
     private var underrunCount = 0
+    @Volatile
     private var activeTrackUnderrunCount = 0
+    @Volatile
     private var trackGeneration = 0
+    @Volatile
     private var deadlineMissCount = 0L
+    @Volatile
     private var bypassBufferCount = 0L
+    @Volatile
     private var lastProcessingNanos = 0L
+    @Volatile
     private var maxProcessingNanos = 0L
+    @Volatile
     private var processingLoadEwma = 0.0
+    @Volatile
     private var lastRecoveryReason: String? = null
+    @Volatile
     private var lastRecoveryAtNanos: Long? = null
+    @Volatile
     private var lastReconfigurationReason: String? = null
+    @Volatile
     private var lastReconfigurationAtNanos: Long? = null
+    @Volatile
     private var lastErrorCode: Int? = null
 
-    @Synchronized
     fun configure(rate: Int, channels: Int, samples: Int) {
         sampleRate = rate
         channelCount = channels
@@ -110,7 +138,6 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         activeTrackUnderrunCount = 0
     }
 
-    @Synchronized
     fun recordRead(result: AudioTransferResult) {
         totalReadSamples += result.transferredSamples
         partialReadOperations += result.partialOperationCount
@@ -121,7 +148,6 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         }
     }
 
-    @Synchronized
     fun recordWrite(result: AudioTransferResult) {
         totalWrittenSamples += result.transferredSamples
         partialWriteOperations += result.partialOperationCount
@@ -132,7 +158,6 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
         }
     }
 
-    @Synchronized
     fun recordProcessing(durationNanos: Long, deadlineNanos: Long, bypassed: Boolean) {
         lastProcessingNanos = durationNanos.coerceAtLeast(0)
         maxProcessingNanos = maxOf(maxProcessingNanos, lastProcessingNanos)
@@ -143,7 +168,6 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     }
 
     /** Records the monotonic underrun counter belonging to the currently active AudioTrack. */
-    @Synchronized
     fun recordActiveTrackUnderrunCount(currentCount: Int) {
         val safeCurrent = currentCount.coerceAtLeast(0)
         underrunCount += (safeCurrent - activeTrackUnderrunCount).coerceAtLeast(0)
@@ -151,28 +175,30 @@ class AudioTransportTelemetry(private val clockNanos: () -> Long = System::nanoT
     }
 
     /** Retained for deterministic tests and non-AudioTrack transports. */
-    @Synchronized
     fun recordUnderrunDelta(delta: Int) {
         val safeDelta = delta.coerceAtLeast(0)
         underrunCount += safeDelta
         activeTrackUnderrunCount += safeDelta
     }
 
-    @Synchronized
     fun recordRecovery(reason: String) {
         recoveryCount++
         lastRecoveryReason = reason
         lastRecoveryAtNanos = clockNanos()
     }
 
-    @Synchronized
     fun recordReconfiguration(reason: String) {
         reconfigurationCount++
         lastReconfigurationReason = reason
         lastReconfigurationAtNanos = clockNanos()
     }
 
-    @Synchronized
+    fun currentUnderrunCount(): Int = underrunCount
+
+    fun currentDeadlineMissCount(): Long = deadlineMissCount
+
+    fun currentProcessingLoadEwma(): Double = processingLoadEwma
+
     fun snapshot(): Snapshot {
         val now = clockNanos()
         return Snapshot(
