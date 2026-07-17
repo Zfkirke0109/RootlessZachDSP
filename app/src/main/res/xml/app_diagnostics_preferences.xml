@@ -9,6 +9,12 @@
         app:iconSpaceReserved="false" />
 
     <Preference
+        app:key="@string/key_diagnostics_source_fidelity"
+        app:title="@string/rootless_zach_source_fidelity_title"
+        app:summary="@string/rootless_zach_source_fidelity_summary"
+        app:iconSpaceReserved="false" />
+
+    <Preference
         app:key="@string/key_diagnostics_recent_events"
         app:title="@string/rootless_zach_diagnostics_recent_title"
         app:summary="@string/rootless_zach_diagnostics_recent_summary"
