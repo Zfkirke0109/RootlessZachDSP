@@ -136,6 +136,17 @@
         </activity>
 
         <activity
+            android:name=".activity.DirectPlayerActivity"
+            android:exported="false"
+            android:label="@string/direct_player_title"
+            android:theme="@style/Theme.RootlessJamesDSP"
+            android:launchMode="singleTop">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".activity.SettingsActivity" />
+        </activity>
+
+        <activity
             android:name=".activity.BlocklistActivity"
             android:exported="false"
             android:label="@string/title_activity_blocklist"
