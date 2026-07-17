@@ -15,14 +15,13 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * In-memory bridge plus bounded app-private persistence for rootless diagnostics.
  *
- * [publish] and [publishSignal] may be called from the urgent audio thread. They perform atomic
- * updates and simple counter comparisons only. JSON serialization and file I/O are performed by a
- * dedicated writer thread. Periodic snapshots are written approximately every five seconds;
- * anomaly counter increases also request an immediate off-thread flush.
+ * Publish calls may originate from the urgent audio thread. They perform atomic updates and simple
+ * counter comparisons only. JSON serialization and file I/O run on a dedicated writer thread.
  */
 object RootlessZachDiagnostics {
     private val transportSnapshot = AtomicReference<AudioTransportTelemetry.Snapshot?>(null)
-    private val signalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
+    private val engineSignalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
+    private val trackInputSignalSnapshot = AtomicReference<AudioSignalTelemetry.Snapshot?>(null)
     private val writerStarted = AtomicBoolean(false)
     private val store = AtomicReference<RotatingJsonlStore?>(null)
     private val droppedEventCount = AtomicLong(0L)
@@ -36,7 +35,8 @@ object RootlessZachDiagnostics {
 
     // Accessed only by the diagnostics writer thread.
     private var lastPersistedTransportSnapshot: AudioTransportTelemetry.Snapshot? = null
-    private var lastPersistedSignalSnapshot: AudioSignalTelemetry.Snapshot? = null
+    private var lastPersistedEngineSignalSnapshot: AudioSignalTelemetry.Snapshot? = null
+    private var lastPersistedTrackInputSignalSnapshot: AudioSignalTelemetry.Snapshot? = null
 
     private val buildIdentity = DiagnosticBuildIdentity(
         applicationId = BuildConfig.APPLICATION_ID,
@@ -48,27 +48,38 @@ object RootlessZachDiagnostics {
     fun publish(value: AudioTransportTelemetry.Snapshot) {
         val previous = transportSnapshot.getAndSet(value)
         ensureWriterStarted()
-        if (previous != null && hasAnomalyIncrease(previous, value)) {
+        if (previous != null && hasImmediateEventIncrease(previous, value)) {
             writer.execute { flushLatestSafely() }
         }
     }
 
+    /** Captured input compared with the direct DSP-engine output. */
     fun publishSignal(value: AudioSignalTelemetry.Snapshot) {
-        signalSnapshot.set(value)
+        engineSignalSnapshot.set(value)
+        ensureWriterStarted()
+    }
+
+    /** Captured input compared with the final post-crossfade buffer submitted to AudioTrack. */
+    fun publishTrackInputSignal(value: AudioSignalTelemetry.Snapshot) {
+        trackInputSignalSnapshot.set(value)
         ensureWriterStarted()
     }
 
     fun latestTransportSnapshot(): AudioTransportTelemetry.Snapshot? = transportSnapshot.get()
 
-    fun latestSignalSnapshot(): AudioSignalTelemetry.Snapshot? = signalSnapshot.get()
+    fun latestSignalSnapshot(): AudioSignalTelemetry.Snapshot? = engineSignalSnapshot.get()
+
+    fun latestTrackInputSignalSnapshot(): AudioSignalTelemetry.Snapshot? = trackInputSignalSnapshot.get()
 
     /** Starts a new non-identifying correlation epoch for a service/engine lifetime. */
     fun beginEngineEpoch() {
         engineEpoch = newEpoch()
-        signalSnapshot.set(null)
+        engineSignalSnapshot.set(null)
+        trackInputSignalSnapshot.set(null)
         writer.execute {
             lastPersistedTransportSnapshot = null
-            lastPersistedSignalSnapshot = null
+            lastPersistedEngineSignalSnapshot = null
+            lastPersistedTrackInputSignalSnapshot = null
         }
         ensureWriterStarted()
     }
@@ -76,7 +87,8 @@ object RootlessZachDiagnostics {
     /** Clears only the in-memory latest snapshots, preserving persisted history. */
     fun clear() {
         transportSnapshot.set(null)
-        signalSnapshot.set(null)
+        engineSignalSnapshot.set(null)
+        trackInputSignalSnapshot.set(null)
     }
 
     fun clearHistory() {
@@ -85,7 +97,8 @@ object RootlessZachDiagnostics {
             runCatching { diagnosticsStore()?.clear() }
                 .onFailure { Timber.w(it, "Unable to clear RootlessZach diagnostics history") }
             lastPersistedTransportSnapshot = null
-            lastPersistedSignalSnapshot = null
+            lastPersistedEngineSignalSnapshot = null
+            lastPersistedTrackInputSignalSnapshot = null
             droppedEventCount.set(0L)
         }
     }
@@ -109,24 +122,34 @@ object RootlessZachDiagnostics {
 
     private fun flushLatestSafely() {
         val current = transportSnapshot.get() ?: return
-        val currentSignal = signalSnapshot.get()
+        val currentEngineSignal = engineSignalSnapshot.get()
+        val currentTrackInputSignal = trackInputSignalSnapshot.get()
         val previous = lastPersistedTransportSnapshot
-        val previousSignal = lastPersistedSignalSnapshot
+        val previousEngineSignal = lastPersistedEngineSignalSnapshot
+        val previousTrackInputSignal = lastPersistedTrackInputSignalSnapshot
 
-        // The writer remains alive for the application process. Once audio processing stops, the
-        // latest atomic snapshots intentionally remain available to the report UI. Persist a final
-        // signal-only update once, but do not append exact transport-and-signal duplicates every
-        // five seconds with only a newer wall-clock timestamp.
+        // Keep final signal-only updates once, but suppress exact stale repeats.
         val transportUnchanged = previous?.capturedAtNanos == current.capturedAtNanos
-        val signalUnchanged = previousSignal?.capturedAtNanos == currentSignal?.capturedAtNanos
-        if (transportUnchanged && signalUnchanged) return
+        val engineSignalUnchanged =
+            previousEngineSignal?.capturedAtNanos == currentEngineSignal?.capturedAtNanos
+        val trackInputSignalUnchanged =
+            previousTrackInputSignal?.capturedAtNanos == currentTrackInputSignal?.capturedAtNanos
+        if (transportUnchanged && engineSignalUnchanged && trackInputSignalUnchanged) return
 
         val droppedBeforeWrite = droppedEventCount.get()
         val nowMs = System.currentTimeMillis()
         val epoch = engineEpoch
-        val lines = ArrayList<String>(7)
+        val lines = ArrayList<String>(10)
 
         if (previous != null) {
+            addDelta(
+                lines,
+                AudioDiagnosticEventType.RECONFIGURATION,
+                current.reconfigurationCount - previous.reconfigurationCount,
+                current,
+                epoch,
+                nowMs,
+            )
             addDelta(
                 lines,
                 AudioDiagnosticEventType.RECOVERY,
@@ -176,19 +199,30 @@ object RootlessZachDiagnostics {
             wallClockEpochMs = nowMs,
             droppedEventCount = droppedBeforeWrite,
         )
-        currentSignal?.let { signal ->
+        currentEngineSignal?.let { signal ->
             lines += AudioDiagnosticJson.signalSnapshot(
                 snapshot = signal,
                 build = buildIdentity,
                 engineEpoch = epoch,
                 wallClockEpochMs = nowMs,
+                measurementBoundary = AudioDiagnosticJson.ENGINE_SIGNAL_MEASUREMENT_BOUNDARY,
+            )
+        }
+        currentTrackInputSignal?.let { signal ->
+            lines += AudioDiagnosticJson.signalSnapshot(
+                snapshot = signal,
+                build = buildIdentity,
+                engineEpoch = epoch,
+                wallClockEpochMs = nowMs,
+                measurementBoundary = AudioDiagnosticJson.TRACK_INPUT_SIGNAL_MEASUREMENT_BOUNDARY,
             )
         }
 
         try {
             diagnosticsStore()?.appendLines(lines) ?: return
             lastPersistedTransportSnapshot = current
-            lastPersistedSignalSnapshot = currentSignal
+            lastPersistedEngineSignalSnapshot = currentEngineSignal
+            lastPersistedTrackInputSignalSnapshot = currentTrackInputSignal
             if (droppedBeforeWrite > 0L) {
                 droppedEventCount.addAndGet(-droppedBeforeWrite)
             }
@@ -217,11 +251,12 @@ object RootlessZachDiagnostics {
         )
     }
 
-    private fun hasAnomalyIncrease(
+    private fun hasImmediateEventIncrease(
         previous: AudioTransportTelemetry.Snapshot,
         current: AudioTransportTelemetry.Snapshot,
     ): Boolean =
-        current.recoveryCount > previous.recoveryCount ||
+        current.reconfigurationCount > previous.reconfigurationCount ||
+            current.recoveryCount > previous.recoveryCount ||
             current.underrunCount > previous.underrunCount ||
             current.deadlineMissCount > previous.deadlineMissCount ||
             current.ioErrorCount > previous.ioErrorCount ||

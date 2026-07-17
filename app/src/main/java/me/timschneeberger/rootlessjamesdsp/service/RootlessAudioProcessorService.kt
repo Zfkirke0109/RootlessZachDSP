@@ -34,6 +34,7 @@ import me.timschneeberger.rootlessjamesdsp.audio.capture.CapturePolicyStore
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AdaptiveBufferController
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransferResult
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransfers
+import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.LinearRamp
 import me.timschneeberger.rootlessjamesdsp.audio.transport.WetDryCrossfader
@@ -92,6 +93,9 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private var recreateReason = "configuration changed"
 
     @Volatile
+    private var recreateExpected = true
+
+    @Volatile
     private var recorderThread: Thread? = null
 
     @Volatile
@@ -120,6 +124,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private var isServiceDisposing = false
 
     private val transportTelemetry = AudioTransportTelemetry()
+    private val audioTrackInputTelemetry = AudioSignalTelemetry(
+        hashSeed = System.nanoTime() xor System.identityHashCode(this).toLong(),
+        hashStride = TRACK_INPUT_SIGNAL_HASH_STRIDE,
+    )
+    private var lastTrackInputSignalPublishNanos = 0L
     private val capturePolicyStore by lazy { CapturePolicyStore(this) }
 
     private val preferences: Preferences.App by inject()
@@ -364,9 +373,13 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         }
     }
 
-    fun requestAudioRecordRecreation(reason: String = "configuration changed") {
+    fun requestAudioRecordRecreation(
+        reason: String = "configuration changed",
+        expected: Boolean = true,
+    ) {
         if (isProcessorDisposing || isServiceDisposing) return
         recreateReason = reason
+        recreateExpected = expected
         recreateRecorderRequested = true
     }
 
@@ -475,7 +488,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         var rebuildAfterCurrentBuffer = false
         var pendingBufferSamples = pipeline.bufferSamples
         var pendingRebuildReason = ""
-        var lastTrackUnderrunCount = 0
+        var pendingRebuildExpected = false
         var previousUnderrunCount = 0
         var previousDeadlineMissCount = 0L
         var lastTelemetryPublishNanos = System.nanoTime()
@@ -484,14 +497,23 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         activeAudioRecord = pipeline.recorder
         activeAudioTrack = pipeline.track
 
-        fun scheduleRebuild(reason: String, bufferSamples: Int = pipeline.bufferSamples) {
+        fun scheduleRebuild(
+            reason: String,
+            bufferSamples: Int = pipeline.bufferSamples,
+            expected: Boolean = false,
+        ) {
             pendingRebuildReason = reason
             pendingBufferSamples = bufferSamples.coerceIn(MIN_BUFFER_SAMPLES, MAX_BUFFER_SAMPLES)
+            pendingRebuildExpected = expected
             rebuildAfterCurrentBuffer = true
             recoveryGain.rampTo(0f, crossfadeSamples.coerceAtMost(pipeline.bufferSamples))
         }
 
-        fun rebuildNow(reason: String, requestedBufferSamples: Int): Boolean {
+        fun rebuildNow(
+            reason: String,
+            requestedBufferSamples: Int,
+            expected: Boolean = false,
+        ): Boolean {
             releaseAudioPipeline(pipeline)
             activeAudioRecord = null
             activeAudioTrack = null
@@ -512,8 +534,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                         CHANNEL_COUNT,
                     )
                     transportTelemetry.configure(sampleRate, CHANNEL_COUNT, pipeline.bufferSamples)
-                    transportTelemetry.recordRecovery(reason)
-                    lastTrackUnderrunCount = 0
+                    if (expected) transportTelemetry.recordReconfiguration(reason)
+                    else transportTelemetry.recordRecovery(reason)
                     activeAudioRecord = pipeline.recorder
                     activeAudioTrack = pipeline.track
                     recoveryGain.setImmediate(0f)
@@ -539,12 +561,18 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             while (!isProcessorDisposing) {
                 if (recreateRecorderRequested && !rebuildAfterCurrentBuffer) {
                     recreateRecorderRequested = false
-                    scheduleRebuild(recreateReason)
+                    val expected = recreateExpected
+                    recreateExpected = true
+                    scheduleRebuild(recreateReason, expected = expected)
                 }
                 if (isProcessorIdle && suspendOnIdle) {
                     stopPipelineForIdle(pipeline)
                     if (rebuildAfterCurrentBuffer) {
-                        if (!rebuildNow(pendingRebuildReason, pendingBufferSamples)) {
+                        if (!rebuildNow(
+                                pendingRebuildReason,
+                                pendingBufferSamples,
+                                pendingRebuildExpected,
+                            )) {
                             stopSelf()
                             return
                         }
@@ -619,6 +647,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 }
 
                 applyRecoveryGain(encoding, buffers, recoveryGain)
+                recordAudioTrackInputSignal(encoding, buffers)
                 transportTelemetry.recordProcessing(
                     processingNanos,
                     bufferDeadlineNanos,
@@ -626,11 +655,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 )
                 val writeResult = writeBuffer(encoding, pipeline.track, buffers)
                 transportTelemetry.recordWrite(writeResult)
-                val currentUnderruns = pipeline.track.underrunCount
-                transportTelemetry.recordUnderrunDelta(
-                    (currentUnderruns - lastTrackUnderrunCount).coerceAtLeast(0),
-                )
-                lastTrackUnderrunCount = currentUnderruns
+                transportTelemetry.recordActiveTrackUnderrunCount(pipeline.track.underrunCount)
 
                 if (writeResult.errorCode != null || !writeResult.completed) {
                     val reason = writeResult.errorCode?.let { "AudioTrack error $it" }
@@ -648,7 +673,11 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 }
 
                 if (rebuildAfterCurrentBuffer && recoveryGain.isSettled) {
-                    if (!rebuildNow(pendingRebuildReason, pendingBufferSamples)) {
+                    if (!rebuildNow(
+                        pendingRebuildReason,
+                        pendingBufferSamples,
+                        pendingRebuildExpected,
+                    )) {
                         stopSelf()
                         return
                     }
@@ -684,6 +713,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 }
             }
         } finally {
+            publishFinalAudioTrackInputSignal()
             releaseAudioPipeline(pipeline)
             activeAudioRecord = null
             activeAudioTrack = null
@@ -741,6 +771,33 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private fun applyRecoveryGain(encoding: AudioEncoding, buffers: AudioBuffers, gain: LinearRamp) {
         if (encoding == AudioEncoding.PcmShort) gain.applyInPlace(buffers.shortMixed)
         else gain.applyInPlace(buffers.floatMixed)
+    }
+
+    private fun recordAudioTrackInputSignal(encoding: AudioEncoding, buffers: AudioBuffers) {
+        if (encoding == AudioEncoding.PcmShort) {
+            audioTrackInputTelemetry.recordShort(
+                buffers.shortDry,
+                buffers.shortMixed,
+                buffers.sampleCount,
+            )
+        } else {
+            audioTrackInputTelemetry.recordFloat(
+                buffers.floatDry,
+                buffers.floatMixed,
+                buffers.sampleCount,
+            )
+        }
+        val now = System.nanoTime()
+        if (now - lastTrackInputSignalPublishNanos >= TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS) {
+            RootlessZachDiagnostics.publishTrackInputSignal(audioTrackInputTelemetry.snapshot())
+            lastTrackInputSignalPublishNanos = now
+        }
+    }
+
+    private fun publishFinalAudioTrackInputSignal() {
+        audioTrackInputTelemetry.snapshot().takeIf { it.sampleCount > 0L }?.let {
+            RootlessZachDiagnostics.publishTrackInputSignal(it)
+        }
     }
 
     private fun zeroUnreadTail(
@@ -978,6 +1035,8 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         private const val DEADLINE_MISSES_BEFORE_BYPASS = 3
         private const val DSP_BYPASS_COOLDOWN_NANOS = 2_000_000_000L
         private const val TELEMETRY_INTERVAL_NANOS = 1_000_000_000L
+        private const val TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS = 1_000_000_000L
+        private const val TRACK_INPUT_SIGNAL_HASH_STRIDE = 16
         private const val IDLE_POLL_MS = 50L
         private const val PIPELINE_REBUILD_ATTEMPTS = 3
         private const val PIPELINE_REBUILD_BACKOFF_MS = 60L

@@ -185,3 +185,18 @@ The foundation remains draft until:
   not claimed. These require capability detection, direct-path validation, licensing where
   applicable, and physical-device proof.
 
+## Diagnostics accuracy follow-up
+
+- Expected policy/settings-driven pipeline rebuilds are classified as RECONFIGURATION rather than
+  RECOVERY.
+- Transport snapshots retain the legacy underrun field while adding service-epoch underrun delta,
+  active-AudioTrack underruns, and track generation.
+- A second allocation-free signal accumulator measures captured input against the final
+  post-crossfade/post-recovery-gain buffer submitted to AudioTrack. It still does not claim to
+  observe Samsung's downstream system mix.
+- Compatibility reports probe public Android 14+ USB mixer capabilities, including whether a
+  connected USB route advertises BIT_PERFECT behavior. Rootless DSP itself remains explicitly
+  non-bit-perfect.
+- Active Samsung/Dolby/third-party effect state cannot be reliably enumerated through public APIs,
+  so reports warn about the unobservable pre/post system effect chain instead of guessing.
+

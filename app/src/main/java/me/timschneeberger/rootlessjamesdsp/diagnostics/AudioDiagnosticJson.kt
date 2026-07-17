@@ -14,6 +14,7 @@ internal enum class AudioDiagnosticEventType {
     TRANSPORT_SNAPSHOT,
     SIGNAL_SNAPSHOT,
     RECOVERY,
+    RECONFIGURATION,
     UNDERRUN,
     DEADLINE_MISS,
     IO_ERROR,
@@ -23,7 +24,11 @@ internal enum class AudioDiagnosticEventType {
 /** Manual JSON encoding keeps the diagnostics foundation dependency-free and testable on the JVM. */
 internal object AudioDiagnosticJson {
     const val SCHEMA_VERSION = 1
-    const val SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_DSP_ENGINE_OUTPUT"
+    const val ENGINE_SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_DSP_ENGINE_OUTPUT"
+    const val TRACK_INPUT_SIGNAL_MEASUREMENT_BOUNDARY = "CAPTURED_INPUT_TO_AUDIO_TRACK_INPUT"
+
+    /** Compatibility alias for older report callers. */
+    const val SIGNAL_MEASUREMENT_BOUNDARY = ENGINE_SIGNAL_MEASUREMENT_BOUNDARY
 
     fun transportSnapshot(
         snapshot: AudioTransportTelemetry.Snapshot,
@@ -31,7 +36,7 @@ internal object AudioDiagnosticJson {
         engineEpoch: String,
         wallClockEpochMs: Long,
         droppedEventCount: Long,
-    ): String = buildString(640) {
+    ): String = buildString(760) {
         beginEnvelope(
             type = AudioDiagnosticEventType.TRANSPORT_SNAPSHOT,
             capturedAtNanos = snapshot.capturedAtNanos,
@@ -49,13 +54,18 @@ internal object AudioDiagnosticJson {
         number("zeroProgressOperations", snapshot.zeroProgressOperations)
         number("ioErrors", snapshot.ioErrorCount)
         number("recoveries", snapshot.recoveryCount)
+        number("reconfigurations", snapshot.reconfigurationCount)
         number("underruns", snapshot.underrunCount)
+        number("epochUnderrunDelta", snapshot.underrunCount)
+        number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
+        number("trackGeneration", snapshot.trackGeneration)
         number("deadlineMisses", snapshot.deadlineMissCount)
         number("bypassBuffers", snapshot.bypassBufferCount)
         number("lastProcessingNanos", snapshot.lastProcessingNanos)
         number("maxProcessingNanos", snapshot.maxProcessingNanos)
         decimal("processingLoadEwma", snapshot.processingLoadEwma)
         nullableNumber("lastRecoveryAgeMs", recoveryAgeMs(snapshot))
+        nullableNumber("lastReconfigurationAgeMs", reconfigurationAgeMs(snapshot))
         nullableNumber("lastErrorCode", snapshot.lastErrorCode?.toLong())
         number("droppedEventCount", droppedEventCount)
         endObject()
@@ -66,7 +76,8 @@ internal object AudioDiagnosticJson {
         build: DiagnosticBuildIdentity,
         engineEpoch: String,
         wallClockEpochMs: Long,
-    ): String = buildString(700) {
+        measurementBoundary: String = ENGINE_SIGNAL_MEASUREMENT_BOUNDARY,
+    ): String = buildString(720) {
         beginEnvelope(
             type = AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
             capturedAtNanos = snapshot.capturedAtNanos,
@@ -74,7 +85,7 @@ internal object AudioDiagnosticJson {
             engineEpoch = engineEpoch,
             wallClockEpochMs = wallClockEpochMs,
         )
-        string("measurementBoundary", SIGNAL_MEASUREMENT_BOUNDARY)
+        string("measurementBoundary", measurementBoundary)
         number("sampleCount", snapshot.sampleCount)
         decimal("inputRms", snapshot.inputRms)
         decimal("outputRms", snapshot.outputRms)
@@ -102,7 +113,7 @@ internal object AudioDiagnosticJson {
         build: DiagnosticBuildIdentity,
         engineEpoch: String,
         wallClockEpochMs: Long,
-    ): String = buildString(320) {
+    ): String = buildString(420) {
         require(
             type != AudioDiagnosticEventType.TRANSPORT_SNAPSHOT &&
                 type != AudioDiagnosticEventType.SIGNAL_SNAPSHOT,
@@ -118,13 +129,30 @@ internal object AudioDiagnosticJson {
         number("bufferSamples", snapshot.bufferSamples)
         decimal("processingLoadEwma", snapshot.processingLoadEwma)
         number("underruns", snapshot.underrunCount)
+        number("epochUnderrunDelta", snapshot.underrunCount)
+        number("activeTrackUnderruns", snapshot.activeTrackUnderrunCount)
+        number("trackGeneration", snapshot.trackGeneration)
         number("deadlineMisses", snapshot.deadlineMissCount)
         number("ioErrors", snapshot.ioErrorCount)
         number("bypassBuffers", snapshot.bypassBufferCount)
         nullableNumber("lastErrorCode", snapshot.lastErrorCode?.toLong())
-        if (type == AudioDiagnosticEventType.RECOVERY) {
-            nullableString("reason", snapshot.lastRecoveryReason)
-            nullableNumber("recoveryAgeMs", recoveryAgeMs(snapshot))
+        when (type) {
+            AudioDiagnosticEventType.RECOVERY -> {
+                nullableString("reason", snapshot.lastRecoveryReason)
+                nullableNumber("recoveryAgeMs", recoveryAgeMs(snapshot))
+                boolean("expected", false)
+            }
+            AudioDiagnosticEventType.RECONFIGURATION -> {
+                nullableString("reason", snapshot.lastReconfigurationReason)
+                nullableNumber("reconfigurationAgeMs", reconfigurationAgeMs(snapshot))
+                boolean("expected", true)
+            }
+            AudioDiagnosticEventType.UNDERRUN -> {
+                val nearExpectedReconfiguration =
+                    reconfigurationAgeMs(snapshot)?.let { it <= RECONFIGURATION_ASSOCIATION_WINDOW_MS } == true
+                boolean("nearExpectedReconfiguration", nearExpectedReconfiguration)
+            }
+            else -> Unit
         }
         endObject()
     }
@@ -148,9 +176,13 @@ internal object AudioDiagnosticJson {
     }
 
     private fun recoveryAgeMs(snapshot: AudioTransportTelemetry.Snapshot): Long? =
-        snapshot.lastRecoveryAtNanos?.let { recoveryAt ->
-            (snapshot.capturedAtNanos - recoveryAt).coerceAtLeast(0L) / 1_000_000L
-        }
+        snapshot.lastRecoveryAtNanos?.let { eventAgeMs(snapshot.capturedAtNanos, it) }
+
+    private fun reconfigurationAgeMs(snapshot: AudioTransportTelemetry.Snapshot): Long? =
+        snapshot.lastReconfigurationAtNanos?.let { eventAgeMs(snapshot.capturedAtNanos, it) }
+
+    private fun eventAgeMs(capturedAtNanos: Long, eventAtNanos: Long): Long =
+        (capturedAtNanos - eventAtNanos).coerceAtLeast(0L) / 1_000_000L
 
     private fun StringBuilder.beginEnvelope(
         type: AudioDiagnosticEventType,
@@ -204,4 +236,6 @@ internal object AudioDiagnosticJson {
     private fun StringBuilder.endObject() {
         append('}')
     }
+
+    private const val RECONFIGURATION_ASSOCIATION_WINDOW_MS = 2_000L
 }
