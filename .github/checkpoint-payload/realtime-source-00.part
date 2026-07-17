@@ -155,4 +155,3 @@ class AdaptiveBufferController(
                     .coerceAtMost(maximum)
             val requestedInitial = maxOf(
                 configuredSamples,
-      
