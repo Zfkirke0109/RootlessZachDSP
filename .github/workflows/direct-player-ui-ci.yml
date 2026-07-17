@@ -49,12 +49,28 @@ jobs:
       - name: Apply deterministic Direct Player integration
         run: python3 tools/apply_direct_player_integration.py
       - name: Unit, instrumentation compile, lint, and APK build
+        id: gradle
+        continue-on-error: true
+        shell: bash
         run: |
+          set -o pipefail
+          mkdir -p ci-evidence
           ./gradlew --stacktrace --console=plain \
             testRootlessFdroidDebugUnitTest \
             assembleRootlessFdroidDebugAndroidTest \
             lintRootlessFdroidDebug \
-            assembleRootlessFdroidDebug
+            assembleRootlessFdroidDebug \
+            2>&1 | tee ci-evidence/gradle-build.log
+      - name: Upload Gradle failure evidence
+        if: steps.gradle.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-player-gradle-failure-${{ github.sha }}
+          path: ci-evidence/gradle-build.log
+          if-no-files-found: error
+      - name: Enforce Gradle gate
+        if: steps.gradle.outcome != 'success'
+        run: exit 1
       - name: Dependency and license evidence
         run: |
           mkdir -p ci-evidence
@@ -165,6 +181,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run Settings and Direct Player navigation tests
+        id: emulator
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -173,4 +191,21 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest
+          script: |
+            set -o pipefail
+            mkdir -p "$GITHUB_WORKSPACE/ci-evidence"
+            ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest \
+              2>&1 | tee "$GITHUB_WORKSPACE/ci-evidence/emulator-gradle.log"
+      - name: Upload emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-player-emulator-${{ github.sha }}
+          path: |
+            ci-evidence/emulator-gradle.log
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+          if-no-files-found: warn
+      - name: Enforce emulator gate
+        if: always()
+        run: test "${{ steps.emulator.outcome }}" = "success"
