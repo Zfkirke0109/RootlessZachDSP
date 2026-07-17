@@ -1,0 +1,130 @@
+                if (now - lastTelemetryPublishNanos >= TELEMETRY_INTERVAL_NANOS) {
+                    telemetryWorker?.requestPublish()
+
+                    val currentUnderrunCount = transportTelemetry.currentUnderrunCount()
+                    val currentDeadlineMissCount = transportTelemetry.currentDeadlineMissCount()
+                    val underrunDelta =
+                        (currentUnderrunCount - previousUnderrunCount).coerceAtLeast(0)
+                    val deadlineDelta =
+                        (currentDeadlineMissCount - previousDeadlineMissCount)
+                            .coerceAtLeast(0L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
+                    val decision = adaptiveBufferController.observe(
+                        AdaptiveBufferController.Observation(
+                            underrunDelta = underrunDelta,
+                            deadlineMissDelta = deadlineDelta,
+                            processingLoadRatio = transportTelemetry.currentProcessingLoadEwma(),
+                        ),
+                    )
+                    if (decision.changed && !rebuildAfterCurrentBuffer) {
+                        scheduleRebuild(
+                            "adaptive buffer ${decision.reason.name.lowercase()}",
+                            decision.newSamples,
+                        )
+                    }
+                    previousUnderrunCount = currentUnderrunCount
+                    previousDeadlineMissCount = currentDeadlineMissCount
+                    lastTelemetryPublishNanos = now
+                }
+''',
+)
+replace_once(
+    service_path,
+    r'''    private fun recordAudioTrackInputSignal(encoding: AudioEncoding, buffers: AudioBuffers) {
+        if (encoding == AudioEncoding.PcmShort) {
+            audioTrackInputTelemetry.recordShort(
+                buffers.shortDry,
+                buffers.shortMixed,
+                buffers.sampleCount,
+            )
+        } else {
+            audioTrackInputTelemetry.recordFloat(
+                buffers.floatDry,
+                buffers.floatMixed,
+                buffers.sampleCount,
+            )
+        }
+        val now = System.nanoTime()
+        if (now - lastTrackInputSignalPublishNanos >= TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS) {
+            RootlessZachDiagnostics.publishTrackInputSignal(audioTrackInputTelemetry.snapshot())
+            lastTrackInputSignalPublishNanos = now
+        }
+    }
+''',
+    r'''    private fun recordAudioTrackInputSignal(encoding: AudioEncoding, buffers: AudioBuffers) {
+        val now = System.nanoTime()
+        if (now - lastTrackInputSignalPublishNanos < TRACK_INPUT_SIGNAL_PUBLISH_INTERVAL_NANOS) {
+            return
+        }
+
+        audioTrackInputTelemetry.reset(
+            now xor System.identityHashCode(this).toLong(),
+        )
+        if (encoding == AudioEncoding.PcmShort) {
+            audioTrackInputTelemetry.recordShort(
+                buffers.shortDry,
+                buffers.shortMixed,
+                buffers.sampleCount,
+            )
+        } else {
+            audioTrackInputTelemetry.recordFloat(
+                buffers.floatDry,
+                buffers.floatMixed,
+                buffers.sampleCount,
+            )
+        }
+        RootlessZachDiagnostics.publishTrackInputSignal(audioTrackInputTelemetry.snapshot())
+        lastTrackInputSignalPublishNanos = now
+    }
+''',
+)
+replace_once(
+    service_path,
+    "        private const val AUDIO_THREAD_NAME = \"RootlessZachAudio\"\n"
+    "        private const val CHANNEL_COUNT = 2\n"
+    "        private const val MIN_BUFFER_SAMPLES = 128\n"
+    "        private const val MAX_BUFFER_SAMPLES = 16_384\n"
+    "        private const val MIN_HAL_BURSTS = 2\n",
+    "        private const val AUDIO_THREAD_NAME = \"RootlessZachAudio\"\n"
+    "        private const val TELEMETRY_THREAD_NAME = \"RootlessZachTelemetry\"\n"
+    "        private const val CHANNEL_COUNT = 2\n"
+    "        private const val MIN_BUFFER_SAMPLES = 128\n"
+    "        private const val MAX_BUFFER_SAMPLES = 16_384\n"
+    "        private const val MIN_HAL_BURSTS = 8\n"
+    "        private const val INITIAL_HAL_BURSTS = 16\n",
+)
+
+append_once(
+    "docs/FEATURES_20_ROADMAP.md",
+    "## Execution checkpoint: real-time transport and diagnostics",
+    r'''
+## Execution checkpoint: real-time transport and diagnostics
+
+Branch `perf/realtime-audio-diagnostics` begins the prerequisite performance work before Milestone A:
+
+- derives adaptive alignment from the actual HAL burst rather than a fixed 128-sample boundary;
+- keeps the user-selected size as an initial preference instead of a permanent adaptive minimum;
+- moves periodic snapshot formatting, diagnostics publication, and broadcast delivery to a coalescing worker;
+- gates pre/post signal scans before touching PCM arrays and measures representative blocks;
+- removes monitor acquisition from the single-writer transport counter path;
+- coalesces immediate JSONL flush requests and batches each generation through one buffered stream.
+
+CI validation does not constitute Galaxy S23 Ultra physical validation. Device acceptance still requires
+speaker, Bluetooth, USB, route-change, lock-screen, thermal, and long-play testing.
+''',
+)
+
+append_once(
+    "docs/AGENT_HANDOFF.md",
+    "## 2026-07-17 real-time audio optimization branch",
+    r'''
+## 2026-07-17 real-time audio optimization branch
+
+- Branch: `perf/realtime-audio-diagnostics`
+- Parent foundation head: `8f0b9fd520584ae091e21e6976d43ad167dc07e3`
+- PR #1 remains draft and unmerged.
+- Scope: HAL-burst-aligned adaptive buffering, representative signal telemetry, bounded/coalesced
+  background publication, lock-free single-writer transport counters, and buffered JSONL batches.
+- Required CI: `testRootlessFdroidDebugUnitTest`, `lintRootlessFdroidDebug`,
+  `assembleRootlessFdroidDebug`, package/signature/16 KiB alignment verification, and SHA-256.
