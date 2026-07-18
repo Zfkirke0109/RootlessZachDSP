@@ -22,6 +22,12 @@
         app:fragment="me.timschneeberger.rootlessjamesdsp.fragment.settings.SettingsDeviceProfilesFragment" />
 
     <Preference
+        app:key="@string/key_direct_player"
+        app:title="@string/direct_player_title"
+        app:summary="@string/direct_player_settings_summary"
+        app:icon="@drawable/ic_twotone_volume_up_24dp" />
+
+    <Preference
         app:key="@string/key_troubleshooting"
         app:title="@string/troubleshooting"
         app:summary="@string/troubleshooting_summary"

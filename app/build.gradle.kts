@@ -248,6 +248,7 @@ dependencies {
     implementation("androidx.databinding:databinding-runtime:8.7.3")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.10.1")
 
     implementation("com.google.android.material:material:1.9.0")
     implementation("io.insert-koin:koin-android:3.3.3")
