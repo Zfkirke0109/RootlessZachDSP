@@ -27,6 +27,7 @@ import me.timschneeberger.rootlessjamesdsp.flavor.UpdateManager
 import me.timschneeberger.rootlessjamesdsp.model.preference.ThemeMode
 import me.timschneeberger.rootlessjamesdsp.model.room.AppBlocklistDatabase
 import me.timschneeberger.rootlessjamesdsp.model.room.AppBlocklistRepository
+import me.timschneeberger.rootlessjamesdsp.player.codec.SeekableDocumentStager
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
 import me.timschneeberger.rootlessjamesdsp.session.dump.DumpManager
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDatabase
@@ -113,6 +114,7 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
 
         // Clean up
         Cache.cleanup(this)
+        SeekableDocumentStager.removeStaleFiles(cacheDir)
 
         try {
             Timber.plant(

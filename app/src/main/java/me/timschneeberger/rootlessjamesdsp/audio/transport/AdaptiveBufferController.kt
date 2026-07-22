@@ -9,6 +9,7 @@ class AdaptiveBufferController(
     val alignmentSamples: Int = 128,
     private val pressureIntervalsBeforeGrow: Int = 2,
     private val stableIntervalsBeforeShrink: Int = 45,
+    private val postShrinkProbationIntervals: Int = 30,
     private val allowShrink: Boolean = true,
 ) {
     data class Observation(
@@ -18,7 +19,14 @@ class AdaptiveBufferController(
         val ioError: Boolean = false,
     )
 
-    enum class Reason { NONE, UNDERRUN, DEADLINE_PRESSURE, IO_ERROR, STABLE_SHRINK }
+    enum class Reason {
+        NONE,
+        UNDERRUN,
+        DEADLINE_PRESSURE,
+        IO_ERROR,
+        STABLE_SHRINK,
+        SHRINK_ROLLBACK,
+    }
 
     data class Decision(val previousSamples: Int, val newSamples: Int, val reason: Reason) {
         val changed: Boolean get() = previousSamples != newSamples
@@ -35,6 +43,9 @@ class AdaptiveBufferController(
         require(alignmentSamples > 0) { "alignmentSamples must be positive" }
         require(pressureIntervalsBeforeGrow > 0) { "pressureIntervalsBeforeGrow must be positive" }
         require(stableIntervalsBeforeShrink > 0) { "stableIntervalsBeforeShrink must be positive" }
+        require(postShrinkProbationIntervals > 0) {
+            "postShrinkProbationIntervals must be positive"
+        }
     }
 
     private val minimumSamples =
@@ -50,6 +61,9 @@ class AdaptiveBufferController(
 
     private var pressureIntervals = 0
     private var stableIntervals = 0
+    private var learnedMinimumSamples = this.minimumSamples
+    private var preShrinkSamples: Int? = null
+    private var postShrinkProbationRemaining = 0
 
     fun observe(observation: Observation): Decision {
         val previous = currentSamples
@@ -62,8 +76,18 @@ class AdaptiveBufferController(
         }
 
         if (pressureReason != Reason.NONE) {
-            pressureIntervals++
             stableIntervals = 0
+            val rollbackSamples = preShrinkSamples
+            if (rollbackSamples != null && postShrinkProbationRemaining > 0) {
+                learnedMinimumSamples = maxOf(learnedMinimumSamples, rollbackSamples)
+                currentSamples = rollbackSamples.coerceAtMost(maximumSamples)
+                preShrinkSamples = null
+                postShrinkProbationRemaining = 0
+                pressureIntervals = 0
+                return Decision(previous, currentSamples, Reason.SHRINK_ROLLBACK)
+            }
+
+            pressureIntervals++
             if (pressureIntervals >= pressureIntervalsBeforeGrow && currentSamples < maximumSamples) {
                 currentSamples =
                     alignUp(
@@ -79,17 +103,28 @@ class AdaptiveBufferController(
         }
 
         pressureIntervals = 0
+        if (postShrinkProbationRemaining > 0) {
+            postShrinkProbationRemaining--
+            if (postShrinkProbationRemaining == 0) preShrinkSamples = null
+        }
         stableIntervals = if (observation.processingLoadRatio in 0.0..0.55) {
             stableIntervals + 1
         } else {
             0
         }
 
-        if (allowShrink && stableIntervals >= stableIntervalsBeforeShrink && currentSamples > minimumSamples) {
+        val shrinkFloor = maxOf(minimumSamples, learnedMinimumSamples)
+        if (allowShrink &&
+            postShrinkProbationRemaining == 0 &&
+            stableIntervals >= stableIntervalsBeforeShrink &&
+            currentSamples > shrinkFloor
+        ) {
+            preShrinkSamples = currentSamples
             currentSamples =
-                alignDown((currentSamples / 2).coerceAtLeast(minimumSamples), alignmentSamples)
-                    .coerceAtLeast(minimumSamples)
+                alignDown((currentSamples / 2).coerceAtLeast(shrinkFloor), alignmentSamples)
+                    .coerceAtLeast(shrinkFloor)
             stableIntervals = 0
+            postShrinkProbationRemaining = postShrinkProbationIntervals
             return Decision(previous, currentSamples, Reason.STABLE_SHRINK)
         }
 

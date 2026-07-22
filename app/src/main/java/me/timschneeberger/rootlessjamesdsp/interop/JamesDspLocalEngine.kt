@@ -12,10 +12,14 @@ import timber.log.Timber
 import java.util.Timer
 import kotlin.concurrent.schedule
 
-class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspCallbacks? = null) : JamesDspBaseEngine(context, callbacks) {
+class JamesDspLocalEngine(
+    context: Context,
+    callbacks: JamesDspWrapper.JamesDspCallbacks? = null,
+    private val publishRootlessDiagnostics: Boolean = true,
+) : JamesDspBaseEngine(context, callbacks) {
     var handle: JamesDspHandle = JamesDspWrapper.alloc(callbacks ?: DummyCallbacks())
 
-    private val signalTelemetry = if (BuildConfig.ROOTLESS) {
+    private val signalTelemetry = if (BuildConfig.ROOTLESS && publishRootlessDiagnostics) {
         AudioSignalTelemetry(
             hashSeed = System.nanoTime() xor handle,
             hashStride = LIVE_SIGNAL_HASH_STRIDE,
@@ -37,7 +41,9 @@ class JamesDspLocalEngine(context: Context, callbacks: JamesDspWrapper.JamesDspC
     init {
         if(BenchmarkManager.hasBenchmarksCached())
             BenchmarkManager.loadBenchmarksFromCache()
-        if (BuildConfig.ROOTLESS) RootlessZachDiagnostics.beginEngineEpoch()
+        if (BuildConfig.ROOTLESS && publishRootlessDiagnostics) {
+            RootlessZachDiagnostics.beginEngineEpoch()
+        }
     }
 
     override fun close() {

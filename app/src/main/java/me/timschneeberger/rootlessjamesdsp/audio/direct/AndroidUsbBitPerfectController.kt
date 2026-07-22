@@ -63,13 +63,15 @@ class AndroidUsbBitPerfectController(context: Context) {
                 .getOrDefault(emptyList())
             if (mixers.isNotEmpty()) sawMixer = true
 
-            val candidates = mixers.mapIndexed { index, mixer ->
-                UsbMixerCandidate(
-                    format = DirectPcmFormat.fromAudioFormat(mixer.format),
-                    bitPerfectBehavior =
-                        mixer.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT,
-                    stableOrder = index,
-                )
+            val candidates = mixers.mapIndexedNotNull { index, mixer ->
+                runCatching {
+                    UsbMixerCandidate(
+                        format = DirectPcmFormat.fromAudioFormat(mixer.format),
+                        bitPerfectBehavior =
+                            mixer.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT,
+                        stableOrder = index,
+                    )
+                }.getOrNull()
             }
             val selection = UsbBitPerfectNegotiator.select(source, candidates)
             sawExactFormat = sawExactFormat || candidates.any { it.format.exactlyMatches(source) }
@@ -77,7 +79,12 @@ class AndroidUsbBitPerfectController(context: Context) {
             val chosen = selection.candidate ?: continue
             val mixer = mixers[chosen.stableOrder]
             val result = openSession(manager, device, mixer, source)
-            if (result.state == DirectPlaybackFidelityState.READY_BIT_PERFECT) return result
+            if (
+                result.state ==
+                DirectPlaybackFidelityState.ANDROID_BIT_PERFECT_MIXER_CONTRACT_ACTIVE
+            ) {
+                return result
+            }
         }
 
         return when {
@@ -162,7 +169,9 @@ class AndroidUsbBitPerfectController(context: Context) {
             )
         }
 
-        if (!track.setPreferredDevice(device)) {
+        val preferredDeviceAccepted = runCatching { track.setPreferredDevice(device) }
+            .getOrDefault(false)
+        if (!preferredDeviceAccepted) {
             track.release()
             runCatching { manager.clearPreferredMixerAttributes(attributes, device) }
             return PreparationResult(
@@ -170,10 +179,20 @@ class AndroidUsbBitPerfectController(context: Context) {
                 "AudioTrack could not select the USB output device",
             )
         }
-        track.setVolume(1.0f)
+        val unityVolumeAccepted = runCatching { track.setVolume(1.0f) }
+            .getOrDefault(AudioTrack.ERROR)
+        if (unityVolumeAccepted != AudioTrack.SUCCESS) {
+            track.release()
+            runCatching { manager.clearPreferredMixerAttributes(attributes, device) }
+            return PreparationResult(
+                DirectPlaybackFidelityState.PREFERENCE_REJECTED,
+                "AudioTrack rejected unity software volume",
+            )
+        }
 
-        val actualFormat = DirectPcmFormat.fromAudioFormat(track.format)
-        if (!actualFormat.exactlyMatches(source)) {
+        val actualFormat = runCatching { DirectPcmFormat.fromAudioFormat(track.format) }
+            .getOrNull()
+        if (actualFormat?.exactlyMatches(source) != true) {
             track.release()
             runCatching { manager.clearPreferredMixerAttributes(attributes, device) }
             return PreparationResult(
@@ -185,8 +204,8 @@ class AndroidUsbBitPerfectController(context: Context) {
         val session = Session(manager, attributes, device, mixer, track)
         session.registerDisconnectCleanup()
         return PreparationResult(
-            DirectPlaybackFidelityState.READY_BIT_PERFECT,
-            "Exact source format and BIT_PERFECT USB mixer behavior are active",
+            DirectPlaybackFidelityState.ANDROID_BIT_PERFECT_MIXER_CONTRACT_ACTIVE,
+            "Android accepted and read back the exact BIT_PERFECT USB mixer contract",
             session,
         )
     }

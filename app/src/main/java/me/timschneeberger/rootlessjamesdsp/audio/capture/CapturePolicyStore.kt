@@ -46,6 +46,19 @@ class CapturePolicyStore(context: Context) {
         .putStringSet(KEY_UIDS, uids.filter { it >= 0 }.map { it.toString() }.toSet())
         .apply()
 
+    /** Replaces the complete policy in one SharedPreferences transaction. */
+    fun setPolicy(policy: Policy) = preferences.edit()
+        .putString(KEY_MODE, policy.mode.name)
+        .putStringSet(
+            KEY_PACKAGES,
+            policy.packageNames.map { it.trim() }.filter { it.isNotBlank() }.toSet(),
+        )
+        .putStringSet(
+            KEY_UIDS,
+            policy.rawUids.filter { it >= 0 }.map { it.toString() }.toSet(),
+        )
+        .apply()
+
     fun resolveUids(policy: Policy = read()): Set<Int> {
         val packageUids = policy.packageNames.mapNotNull { packageName ->
             try {

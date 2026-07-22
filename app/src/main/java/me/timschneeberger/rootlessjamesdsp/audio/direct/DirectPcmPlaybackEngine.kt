@@ -14,9 +14,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 
 /**
- * Streams already-decoded PCM from a local document into the exact AudioTrack verified by
+ * Streams already-decoded PCM from a local document into the exact AudioTrack configured by
  * [AndroidUsbBitPerfectController]. No DSP, fades, resampling, gain ramps, or software volume are
- * inserted.
+ * inserted. The engine separately reports when the playing AudioTrack identifies the selected USB
+ * device as its routed device; that app-observable evidence is not physical-output verification.
  */
 class DirectPcmPlaybackEngine(
     context: Context,
@@ -27,9 +28,10 @@ class DirectPcmPlaybackEngine(
 ) : Closeable {
     sealed interface Event {
         data object Started : Event
+        data object RoutedDeviceConfirmed : Event
         data object Paused : Event
         data object Resumed : Event
-        data object Completed : Event
+        data class Completed(val routedDeviceConfirmed: Boolean) : Event
         data class Failed(val reason: String) : Event
         data object Stopped : Event
     }
@@ -56,14 +58,14 @@ class DirectPcmPlaybackEngine(
 
     override fun close() {
         stopRequested.set(true)
-        worker?.let {
-            LockSupport.unpark(it)
-            it.interrupt()
-            if (Thread.currentThread() !== it) {
-                runCatching { it.join(CLOSE_JOIN_TIMEOUT_MILLIS) }
-            }
+        val thread = worker
+        if (thread == null) {
+            closeResources()
+            return
         }
-        closeResources()
+        runCatching { session.audioTrack.stop() }
+        LockSupport.unpark(thread)
+        thread.interrupt()
     }
 
     private fun runPlayback() {
@@ -72,18 +74,20 @@ class DirectPcmPlaybackEngine(
             extractor.setDataSource(appContext, uri, null)
             val trackIndex = findExactPcmTrack(extractor)
             if (trackIndex < 0) {
-                eventListener(Event.Failed("The selected document no longer exposes the verified PCM format"))
+                eventListener(Event.Failed("The selected document no longer exposes the expected PCM format"))
                 return
             }
             extractor.selectTrack(trackIndex)
 
             val transferBuffer = ByteBuffer.allocateDirect(TRANSFER_BUFFER_BYTES)
             runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO) }
-            session.audioTrack.setVolume(1.0f)
             session.audioTrack.play()
             eventListener(Event.Started)
 
             var reportedPause = false
+            var routedDeviceConfirmed = false
+            var writtenBytes = 0L
+            val frameSizeBytes = expectedFormat.channelCount * expectedFormat.bytesPerSample()
             while (!stopRequested.get()) {
                 if (pauseRequested.get()) {
                     if (!reportedPause) {
@@ -103,7 +107,18 @@ class DirectPcmPlaybackEngine(
                 transferBuffer.clear()
                 val sampleBytes = extractor.readSampleData(transferBuffer, 0)
                 if (sampleBytes < 0) {
-                    eventListener(Event.Completed)
+                    val drained = AudioTrackDrain.awaitPlaybackHead(
+                        session.audioTrack,
+                        writtenBytes / frameSizeBytes,
+                        stopRequested::get,
+                    )
+                    if (drained) {
+                        eventListener(Event.Completed(routedDeviceConfirmed))
+                    } else if (stopRequested.get()) {
+                        eventListener(Event.Stopped)
+                    } else {
+                        eventListener(Event.Failed("Timed out while draining the USB AudioTrack"))
+                    }
                     return
                 }
                 transferBuffer.position(0)
@@ -117,13 +132,69 @@ class DirectPcmPlaybackEngine(
                         AudioTrack.WRITE_BLOCKING,
                     )
                     if (written <= 0) {
-                        eventListener(Event.Failed("AudioTrack write failed with code $written"))
+                        eventListener(
+                            if (stopRequested.get()) {
+                                Event.Stopped
+                            } else {
+                                Event.Failed("AudioTrack write failed with code $written")
+                            },
+                        )
                         return
                     }
                     remaining -= written
+                    writtenBytes += written
+
+                    val routedDeviceResult = runCatching { session.audioTrack.routedDevice }
+                    if (routedDeviceResult.isFailure) {
+                        eventListener(
+                            Event.Failed(
+                                "AudioTrack routed-device query failed: " +
+                                    routedDeviceResult.exceptionOrNull()?.javaClass?.simpleName,
+                            ),
+                        )
+                        return
+                    }
+                    val routedDevice = routedDeviceResult.getOrNull()
+                    when (DirectRouteEvidence.classify(session.device.id, routedDevice?.id)) {
+                        DirectRouteObservation.PENDING -> {
+                            if (routedDeviceConfirmed) {
+                                eventListener(
+                                    Event.Failed(
+                                        "AudioTrack no longer reports the selected USB route",
+                                    ),
+                                )
+                                return
+                            }
+                        }
+                        DirectRouteObservation.SELECTED_USB_CONFIRMED -> {
+                            if (!routedDeviceConfirmed) {
+                                routedDeviceConfirmed = true
+                                eventListener(Event.RoutedDeviceConfirmed)
+                            }
+                        }
+                        DirectRouteObservation.DIFFERENT_DEVICE -> {
+                            eventListener(
+                                Event.Failed(
+                                    "AudioTrack routed away from the selected USB output",
+                                ),
+                            )
+                            return
+                        }
+                    }
                 }
                 if (!extractor.advance() && remaining == 0) {
-                    eventListener(Event.Completed)
+                    val drained = AudioTrackDrain.awaitPlaybackHead(
+                        session.audioTrack,
+                        writtenBytes / frameSizeBytes,
+                        stopRequested::get,
+                    )
+                    if (drained) {
+                        eventListener(Event.Completed(routedDeviceConfirmed))
+                    } else if (stopRequested.get()) {
+                        eventListener(Event.Stopped)
+                    } else {
+                        eventListener(Event.Failed("Timed out while draining the USB AudioTrack"))
+                    }
                     return
                 }
             }
@@ -166,6 +237,16 @@ class DirectPcmPlaybackEngine(
         else -> AudioFormat.ENCODING_INVALID
     }
 
+    private fun DirectPcmFormat.bytesPerSample(): Int = when (encoding) {
+        AudioFormat.ENCODING_PCM_8BIT -> 1
+        AudioFormat.ENCODING_PCM_16BIT -> 2
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
+        AudioFormat.ENCODING_PCM_32BIT,
+        AudioFormat.ENCODING_PCM_FLOAT,
+        -> 4
+        else -> error("Unsupported exact PCM encoding: $encoding")
+    }
+
     private fun MediaFormat.positiveInt(key: String): Int? =
         if (containsKey(key)) getInteger(key).takeIf { it > 0 } else null
 
@@ -188,6 +269,5 @@ class DirectPcmPlaybackEngine(
         private const val THREAD_NAME = "RootlessZachDirectPcm"
         private const val TRANSFER_BUFFER_BYTES = 256 * 1024
         private const val PAUSE_POLL_NANOS = 20_000_000L
-        private const val CLOSE_JOIN_TIMEOUT_MILLIS = 1_500L
     }
 }

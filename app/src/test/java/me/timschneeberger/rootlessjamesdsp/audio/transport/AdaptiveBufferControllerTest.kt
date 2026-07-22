@@ -34,6 +34,7 @@ class AdaptiveBufferControllerTest {
             maximumSamples = 16_128,
             alignmentSamples = 384,
             stableIntervalsBeforeShrink = 2,
+            postShrinkProbationIntervals = 1,
         )
 
         assertFalse(controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1)).changed)
@@ -46,6 +47,45 @@ class AdaptiveBufferControllerTest {
 
         assertEquals(3_072, controller.currentSamples)
         assertEquals(0, controller.currentSamples % 384)
+    }
+
+    @Test
+    fun `pressure during shrink probation restores size and learns a stable floor`() {
+        val controller = AdaptiveBufferController(
+            minimumSamples = 384,
+            initialSamples = 1_536,
+            maximumSamples = 3_072,
+            alignmentSamples = 384,
+            pressureIntervalsBeforeGrow = 2,
+            stableIntervalsBeforeShrink = 2,
+            postShrinkProbationIntervals = 5,
+        )
+
+        controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1))
+        val shrink = controller.observe(
+            AdaptiveBufferController.Observation(processingLoadRatio = 0.1),
+        )
+        assertEquals(768, shrink.newSamples)
+        assertEquals(AdaptiveBufferController.Reason.STABLE_SHRINK, shrink.reason)
+
+        val rollback = controller.observe(
+            AdaptiveBufferController.Observation(underrunDelta = 1),
+        )
+        assertEquals(1_536, rollback.newSamples)
+        assertEquals(AdaptiveBufferController.Reason.SHRINK_ROLLBACK, rollback.reason)
+
+        repeat(20) {
+            controller.observe(AdaptiveBufferController.Observation(processingLoadRatio = 0.1))
+        }
+        assertEquals(1_536, controller.currentSamples)
+
+        assertFalse(
+            controller.observe(AdaptiveBufferController.Observation(deadlineMissDelta = 1)).changed,
+        )
+        assertTrue(
+            controller.observe(AdaptiveBufferController.Observation(deadlineMissDelta = 1)).changed,
+        )
+        assertEquals(3_072, controller.currentSamples)
     }
 
     @Test

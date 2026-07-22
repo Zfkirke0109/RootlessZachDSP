@@ -189,8 +189,7 @@ jobs:
           script: |
             set +e
             mkdir -p "$GITHUB_WORKSPACE/ci-evidence/emulator"
-            ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest \
-              2>&1 | tee "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle.log"
+            ./gradlew --stacktrace --console=plain connectedRootlessFdroidDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/ci-evidence/emulator/gradle.log"
             status=${PIPESTATUS[0]}
             printf '%s\n' "$status" > "$GITHUB_WORKSPACE/ci-evidence/emulator/exit-code.txt"
             find "$GITHUB_WORKSPACE/app/build/outputs/androidTest-results" -type f -maxdepth 8 \

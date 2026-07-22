@@ -53,6 +53,7 @@ import me.timschneeberger.rootlessjamesdsp.session.rootless.OnRootlessSessionCha
 import me.timschneeberger.rootlessjamesdsp.session.rootless.RootlessSessionDatabase
 import me.timschneeberger.rootlessjamesdsp.session.rootless.RootlessSessionManager
 import me.timschneeberger.rootlessjamesdsp.session.rootless.SessionRecordingPolicyManager
+import me.timschneeberger.rootlessjamesdsp.session.shared.SessionUidPolicy
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.Constants.ACTION_PREFERENCES_UPDATED
 import me.timschneeberger.rootlessjamesdsp.utils.Constants.ACTION_SAMPLE_RATE_UPDATED
@@ -979,6 +980,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         val policy = capturePolicyStore.read()
         val policyUids = capturePolicyStore.resolveUids(policy)
         val excludedForSessions = mutableSetOf<Int>()
+        var allowedForSessions: Set<Int>? = null
 
         when (policy.mode) {
             CapturePolicyStore.Mode.EXCLUDE_SELECTED -> {
@@ -991,6 +993,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                 val allowed = policyUids - restrictedUids - selectedUids - Process.myUid()
                 val effectiveAllowed = allowed.ifEmpty { setOf(Process.myUid()) }
                 effectiveAllowed.forEach(config::addMatchingUid)
+                allowedForSessions = allowed
                 excludedForSessions += restrictedUids
                 excludedForSessions += selectedUids
                 excludedForSessions += Process.myUid()
@@ -998,7 +1001,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
             }
         }
 
-        sessionManager.sessionDatabase.setExcludedUids(excludedForSessions.toTypedArray())
+        sessionManager.sessionDatabase.setUidPolicy(
+            SessionUidPolicy(
+                excludedUids = excludedForSessions.toSet(),
+                allowedUids = allowedForSessions,
+            ),
+        )
         sessionManager.pollOnce(false)
         val minimumBytes = AudioRecord.getMinBufferSize(
             sampleRate,

@@ -28,6 +28,12 @@
         app:icon="@drawable/ic_twotone_volume_up_24dp" />
 
     <Preference
+        app:key="@string/key_capture_apps"
+        app:title="@string/capture_apps_title"
+        app:summary="@string/capture_apps_settings_summary"
+        app:icon="@drawable/ic_twotone_headphones_24dp" />
+
+    <Preference
         app:key="@string/key_troubleshooting"
         app:title="@string/troubleshooting"
         app:summary="@string/troubleshooting_summary"

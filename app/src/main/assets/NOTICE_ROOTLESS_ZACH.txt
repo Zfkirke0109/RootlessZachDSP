@@ -10,3 +10,6 @@ RootlessZachDSP fork direction:
 Zach Kirke / Zfkirke0109 — https://github.com/Zfkirke0109/RootlessZachDSP
 
 This software remains licensed under the GNU General Public License v3.0. Upstream copyright, contributor, translator, and license history must remain intact.
+
+The optional local-player WavPack decoder uses WavPack 5.9.0 under its BSD 3-Clause license.
+The complete notice is packaged at assets/licenses/WavPack-BSD-3-Clause.txt.

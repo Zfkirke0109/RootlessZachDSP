@@ -44,9 +44,9 @@ object UsbBitPerfectNegotiator {
             )
 
         return UsbMixerSelection(
-            state = DirectPlaybackFidelityState.READY_BIT_PERFECT,
+            state = DirectPlaybackFidelityState.ELIGIBLE,
             candidate = selected,
-            reason = "Exact source format and BIT_PERFECT mixer behavior are available",
+            reason = "Exact source format and BIT_PERFECT mixer behavior are eligible for configuration",
         )
     }
 }

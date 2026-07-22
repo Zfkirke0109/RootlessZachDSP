@@ -56,7 +56,7 @@ class UsbBitPerfectNegotiatorTest {
             ),
         )
 
-        assertEquals(DirectPlaybackFidelityState.READY_BIT_PERFECT, result.state)
+        assertEquals(DirectPlaybackFidelityState.ELIGIBLE, result.state)
         assertNotNull(result.candidate)
         assertEquals(2, result.candidate?.stableOrder)
     }
@@ -64,7 +64,9 @@ class UsbBitPerfectNegotiatorTest {
     @Test
     fun `bit-perfect policy requires every bypass and verification condition`() {
         val eligible = BitPerfectPlaybackPolicy(
+            sourceFormat = source,
             exactSourceFormat = true,
+            exactBitPerfectMixerCandidate = true,
             dspBypassed = true,
             equalizerBypassed = true,
             limiterBypassed = true,
@@ -72,12 +74,20 @@ class UsbBitPerfectNegotiatorTest {
             fadesBypassed = true,
             loudnessBypassed = true,
             trackVolumeUnity = true,
-            preferredMixerVerified = true,
+            androidBitPerfectMixerContractActive = true,
         )
         assertTrue(eligible.eligible)
+        assertEquals(
+            DirectPlaybackFidelityState.ANDROID_BIT_PERFECT_MIXER_CONTRACT_ACTIVE,
+            eligible.evidence.highestState,
+        )
         assertFalse(eligible.copy(limiterBypassed = false).eligible)
         assertFalse(eligible.copy(trackVolumeUnity = false).eligible)
-        assertFalse(eligible.copy(preferredMixerVerified = false).eligible)
+        assertFalse(eligible.copy(exactBitPerfectMixerCandidate = false).eligible)
+        assertEquals(
+            DirectPlaybackFidelityState.ELIGIBLE,
+            eligible.copy(androidBitPerfectMixerContractActive = false).evidence.highestState,
+        )
     }
 
     private fun candidate(

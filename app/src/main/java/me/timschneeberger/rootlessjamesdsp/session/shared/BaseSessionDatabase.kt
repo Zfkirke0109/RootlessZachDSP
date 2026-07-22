@@ -12,7 +12,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     val sessionList = hashMapOf<Int, IEffectSession>()
     private var isDisposing = false
     private val changeCallbacks = mutableListOf<OnSessionChangeListener>()
-    private var excludedUids = arrayOf<Int>()
+    private var uidPolicy = SessionUidPolicy()
 
     protected open val excludedPackages = arrayOf(
         context.packageName
@@ -44,7 +44,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             !dump.sessions.contains(it.key)
         }
         val addedSessions = dump.sessions.filter {
-            !sessionList.contains(it.key) && !excludedUids.contains(it.value.uid)
+            !sessionList.contains(it.key) && uidPolicy.accepts(it.value.uid)
         }
 
         addedSessions.forEach next@ {
@@ -73,8 +73,8 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             return
         }
 
-        if(excludedUids.contains(uid)) {
-            Timber.d("Rejected session $sid from excluded uid $uid ($packageName)")
+        if(!uidPolicy.accepts(uid)) {
+            Timber.d("Rejected session $sid by uid policy for uid $uid ($packageName)")
             return
         }
 
@@ -104,10 +104,14 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     }
 
     fun setExcludedUids(uids: Array<Int>) {
-        excludedUids = uids
+        setUidPolicy(SessionUidPolicy(excludedUids = uids.toSet()))
+    }
+
+    fun setUidPolicy(policy: SessionUidPolicy) {
+        uidPolicy = policy
 
         val excludedSessions = sessionList.filter {
-            excludedUids.contains(it.value.uid)
+            !uidPolicy.accepts(it.value.uid)
         }
         val notify = excludedSessions.isNotEmpty()
         excludedSessions.forEach { (_, session) -> onSessionRemoved(session) }
