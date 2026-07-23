@@ -186,6 +186,12 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
                         "audio/x-wavpack",
                         "audio/mp4",
                         "audio/*",
+                        // Android's ExternalStorageProvider maps unknown extensions such as
+                        // .wv (WavPack) to application/octet-stream, which an audio-only filter
+                        // greys out. Allow it here (matching the correction-file picker) so
+                        // WavPack sources are selectable; source inspection still validates and
+                        // rejects anything that is not actually FLAC/WavPack.
+                        "application/octet-stream",
                     ),
                 )
             }
