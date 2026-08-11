@@ -157,6 +157,12 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
                         .appendToFile(false)
                         .build()
                 )
+
+                // Re-emit the startup marker now that the file tree exists. The main-thread line
+                // below only reaches logcat, so without this a headless bind that does nothing
+                // else would leave an empty log file — losing the one record that the process
+                // started at all.
+                Timber.i("====> Application started (file logging ready)")
             }
             catch (ex: Exception) {
                 // Log file creation may fail
