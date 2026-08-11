@@ -143,6 +143,11 @@ class MainActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Routing/profile management is created on demand rather than during
+        // Application.onCreate. The UI both reads profiles and can trigger a backup restore,
+        // which ProfileManager listens for, so bring it up as soon as there is a UI.
+        (application as MainApplication).ensureProfileManager()
+
         savedInstanceState?.let {
             hasLoadFailed = it.getBoolean(STATE_LOAD_FAILED)
         }

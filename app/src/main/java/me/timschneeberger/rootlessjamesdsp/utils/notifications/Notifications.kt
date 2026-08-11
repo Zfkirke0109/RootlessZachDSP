@@ -8,6 +8,7 @@ import androidx.core.app.NotificationManagerCompat.IMPORTANCE_LOW
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_NONE
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.utils.OneTimeInitializer
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.buildNotificationChannel
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.buildNotificationChannelGroup
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
@@ -16,6 +17,7 @@ import me.timschneeberger.rootlessjamesdsp.utils.isRootless
  * Class to manage the basic information of all the notifications used in the app.
  */
 object Notifications {
+    private val channelInitializer = OneTimeInitializer()
     /**
      * Notification channel and ids used by the service.
      */
@@ -49,8 +51,23 @@ object Notifications {
     )
 
     /**
+     * Creates the notification channels unless this process already did so.
+     *
+     * Call this immediately before building or posting any notification. Channel definitions are
+     * persisted by the system for the lifetime of the install, so re-declaring them on every
+     * process start only costs binder round-trips into NotificationManagerService — and this
+     * process is very often created *by* NotificationManagerService for a headless listener bind
+     * that never posts a notification at all.
+     *
+     * @param context The application context.
+     */
+    fun ensureChannels(context: Context) = channelInitializer.runOnce { createChannels(context) }
+
+    /**
      * Creates the notification channels introduced in Android Oreo.
      * This won't do anything on Android versions that don't support notification channels.
+     *
+     * Prefer [ensureChannels] on notification paths; this always issues the binder calls.
      *
      * @param context The application context.
      */

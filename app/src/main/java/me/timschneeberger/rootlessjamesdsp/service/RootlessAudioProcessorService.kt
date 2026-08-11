@@ -29,6 +29,7 @@ import androidx.lifecycle.asLiveData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
+import me.timschneeberger.rootlessjamesdsp.MainApplication
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.audio.capture.CapturePolicyStore
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AdaptiveBufferController
@@ -152,6 +153,12 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Routing/profile management is not initialised during Application.onCreate any more,
+        // because a headless bind does not need MediaRouter. Processing is about to start here,
+        // so device-profile switching must be live from now on.
+        (application as MainApplication).ensureProfileManager()
+
         audioManager = getSystemService<AudioManager>()!!
         mediaProjectionManager = applicationContext.getSystemService<MediaProjectionManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!

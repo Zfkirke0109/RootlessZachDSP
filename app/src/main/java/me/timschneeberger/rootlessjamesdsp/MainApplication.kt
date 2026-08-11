@@ -37,7 +37,6 @@ import me.timschneeberger.rootlessjamesdsp.utils.RoutingObserver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.isRoot
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
-import me.timschneeberger.rootlessjamesdsp.utils.notifications.Notifications
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
 import me.timschneeberger.rootlessjamesdsp.utils.sdkAbove
 import me.timschneeberger.rootlessjamesdsp.utils.storage.Cache
@@ -53,6 +52,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.concurrent.thread
 
 
 open class MainApplication : Application(), SharedPreferences.OnSharedPreferenceChangeListener {
@@ -63,7 +63,21 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
     }
 
     private val prefs: Preferences.App by inject()
-    lateinit var profileManager: ProfileManager
+
+    /**
+     * Routing-driven profile management.
+     *
+     * Deliberately lazy. Constructing this registers a MediaRouter callback, which forces the
+     * AndroidX and framework MediaRouter singletons to initialise synchronously on the main
+     * thread. A headless bind (notification listener rebind, Shizuku provider access,
+     * BOOT_COMPLETED) has no use for audio routing, and work on that path is what turns a
+     * CPU-starved post-boot bind into a BIND APPLICATION ANR.
+     *
+     * MediaRouter requires main-thread access, so this must only be touched from the main thread.
+     * Components that depend on routing-driven profile switching call [ensureProfileManager] from
+     * their own onCreate.
+     */
+    val profileManager: ProfileManager by lazy { ProfileManager() }
 
     val rootSessionDatabase by lazy { RootSessionDatabase(this) }
     val isLegacyMode
@@ -112,35 +126,50 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         if(!BuildConfig.FOSS_ONLY)
             Timber.plant(CrashReportingTree())
 
-        // Clean up
-        Cache.cleanup(this)
-        SeekableDocumentStager.removeStaleFiles(cacheDir)
+        // Clean up.
+        // Nothing below in onCreate depends on any of this, so it runs off the bind path: a bind
+        // that overruns its deadline is killed with a BIND APPLICATION ANR, which is what happens
+        // while the device is still starved for CPU shortly after boot.
+        thread(name = "startup-housekeeping", isDaemon = true) {
+            try {
+                // Ordered deliberately. The cache sweep deletes every cacheDir entry outside its
+                // own known directories, so it has to finish before the log file is opened below
+                // — previously it ran on its own thread and could delete application.log moments
+                // after FileLoggerTree created it.
+                Cache.cleanupNow(this@MainApplication)
+                SeekableDocumentStager.removeStaleFiles(cacheDir)
 
-        try {
-            Timber.plant(
-                FileLoggerTree.Builder()
-                    .withFileName("application.log")
-                    .withDirName(this.cacheDir.absolutePath)
-                    .withMinPriority(Log.VERBOSE)
-                    .withSizeLimit(2 * 1000000)
-                    .withFileLimit(1)
-                    .appendToFile(false)
-                    .build()
-            )
-        }
-        catch (ex: Exception) {
-            // Log file creation may fail
-            Timber.e(ex)
+                val dumpFile = File(filesDir, "dump.txt")
+                if(dumpFile.exists()) {
+                    dumpFile.delete()
+                }
+
+                // Opening the log file creates, locks and truncates it. Planting the tree here
+                // means the few lines logged before this point reach logcat but not the log file;
+                // in exchange no startup thread blocks on filesystem I/O.
+                Timber.plant(
+                    FileLoggerTree.Builder()
+                        .withFileName("application.log")
+                        .withDirName(cacheDir.absolutePath)
+                        .withMinPriority(Log.VERBOSE)
+                        .withSizeLimit(2 * 1000000)
+                        .withFileLimit(1)
+                        .appendToFile(false)
+                        .build()
+                )
+            }
+            catch (ex: Exception) {
+                // Log file creation may fail
+                Timber.e(ex)
+            }
         }
 
         Timber.i("====> Application starting up")
 
-        val dumpFile = File(filesDir, "dump.txt")
-        if(dumpFile.exists()) {
-            dumpFile.delete()
-        }
-
-        Notifications.createChannels(this)
+        // Notification channels are declared by whichever component is about to post a
+        // notification (see Notifications.ensureChannels). Declaring them here cost binder
+        // round-trips into NotificationManagerService on every process start, including the
+        // headless listener binds that NotificationManagerService itself triggers.
 
         val appModule = module {
             single { RoutingObserver(androidContext()) }
@@ -155,9 +184,6 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             androidContext(this@MainApplication)
             modules(appModule)
         }
-
-        // Depends on Koin
-        profileManager = ProfileManager()
 
         if(!BuildConfig.FOSS_ONLY) {
             // Soft-disable crashlytics in debug mode by default on each launch
@@ -220,6 +246,14 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         }
         super.onCreate()
     }
+
+    /**
+     * Brings up [profileManager] if this process does not have it yet.
+     *
+     * Call from the main thread when starting a component that relies on routing-driven profile
+     * switching or on backup-restore handling. Cheap and idempotent after the first call.
+     */
+    fun ensureProfileManager(): ProfileManager = profileManager
 
     override fun onTerminate() {
         prefs.unregisterOnSharedPreferenceChangeListener(this)

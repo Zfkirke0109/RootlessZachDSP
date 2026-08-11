@@ -32,6 +32,7 @@ object ServiceNotificationHelper: KoinComponent {
     private val preferences: Preferences.App by inject()
 
     fun pushPermissionPromptNotification(context: Context) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STARTUP)
             .setContentTitle(context.getString(R.string.notification_request_permission_title))
             .setContentText(context.getString(R.string.notification_request_permission))
@@ -77,6 +78,7 @@ object ServiceNotificationHelper: KoinComponent {
     }
 
     fun createServiceNotification(context: Context, sessions: Array<IEffectSession>): Notification {
+        Notifications.ensureChannels(context)
         val apps = sessions.distinct().joinToString(", ") {
             // Rootless uses UIDs primarily internally, while Root has a guaranteed package name
             if(isRootless()) {
@@ -135,7 +137,8 @@ object ServiceNotificationHelper: KoinComponent {
         }
         .build()
 
-    fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) =
+    fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_SESSION_LOSS)
             .setContentTitle(context.getString(R.string.session_control_loss_notification_title))
             .setContentText(context.getString(R.string.session_control_loss_notification))
@@ -159,9 +162,11 @@ object ServiceNotificationHelper: KoinComponent {
                 context.getSystemService<NotificationManager>()
                     ?.notify(Notifications.ID_SERVICE_SESSION_LOSS, it)
             }
+    }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun pushAppIssueNotification(context: Context, projectionIntent: Intent?, appUid: Int) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_APP_COMPAT)
             .setContentTitle(context.getString(R.string.session_app_compat_notification_title))
             .setContentText(context.getString(R.string.session_app_compat_notification))

@@ -77,6 +77,10 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
     override fun onCreate() {
         super.onCreate()
 
+        // See RootlessAudioProcessorService.onCreate: routing/profile management is created on
+        // demand rather than during Application.onCreate.
+        app.ensureProfileManager()
+
         // Register shared preferences listener
         preferences.registerOnSharedPreferenceChangeListener(this)
         app.rootSessionDatabase.registerOnSessionChangeListener(this)
