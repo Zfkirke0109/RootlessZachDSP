@@ -22,6 +22,19 @@ def write(path: str, content: str) -> None:
     target.write_text(content.strip() + "\n", encoding="utf-8")
 
 
+def write_unless_integrated(path: str, marker: str, content: str) -> None:
+    """Bootstrap a file only when it does not carry the integration yet.
+
+    The embedded content is a snapshot. Once the integration is present the checked-in file is
+    the newer source of truth (it has since gained the capture-app wiring), so overwriting it
+    would silently remove that work from the branch this workflow pushes.
+    """
+    target = ROOT / path
+    if target.exists() and marker in target.read_text(encoding="utf-8"):
+        return
+    write(path, content)
+
+
 replace_once(
     "app/build.gradle.kts",
     '    implementation("androidx.mediarouter:mediarouter:1.7.0")\n',
@@ -88,8 +101,9 @@ replace_once(
 ''',
 )
 
-write(
+write_unless_integrated(
     "app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/settings/SettingsFragment.kt",
+    "key_direct_player",
     r'''
 package me.timschneeberger.rootlessjamesdsp.fragment.settings
 
@@ -97,7 +111,9 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.preference.Preference
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.activity.CaptureAppsActivity
 import me.timschneeberger.rootlessjamesdsp.activity.DirectPlayerActivity
+import me.timschneeberger.rootlessjamesdsp.audio.capture.CapturePolicyStore
 import me.timschneeberger.rootlessjamesdsp.utils.isPlugin
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
 
@@ -106,6 +122,7 @@ class SettingsFragment : SettingsBaseFragment() {
     private val troubleshooting by lazy { findPreference<Preference>(getString(R.string.key_troubleshooting)) }
     private val diagnostics by lazy { findPreference<Preference>(getString(R.string.key_diagnostics)) }
     private val directPlayer by lazy { findPreference<Preference>(getString(R.string.key_direct_player)) }
+    private val captureApps by lazy { findPreference<Preference>(getString(R.string.key_capture_apps)) }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.app_preferences, rootKey)
@@ -125,6 +142,46 @@ class SettingsFragment : SettingsBaseFragment() {
                 startActivity(Intent(requireContext(), DirectPlayerActivity::class.java))
                 true
             }
+        }
+        captureApps?.apply {
+            isVisible = rootless
+            setOnPreferenceClickListener {
+                startActivity(Intent(requireContext(), CaptureAppsActivity::class.java))
+                true
+            }
+        }
+        updateCaptureAppsSummary()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateCaptureAppsSummary()
+    }
+
+    private fun updateCaptureAppsSummary() {
+        val preference = captureApps ?: return
+        if (!isRootless()) return
+        val policy = CapturePolicyStore(requireContext()).read()
+        val count = policy.packageNames.size
+        val packageSummary = resources.getQuantityString(
+            when (policy.mode) {
+                CapturePolicyStore.Mode.EXCLUDE_SELECTED ->
+                    R.plurals.capture_apps_settings_summary_exclude
+                CapturePolicyStore.Mode.ALLOW_SELECTED ->
+                    R.plurals.capture_apps_settings_summary_allow
+            },
+            count,
+            count,
+        )
+        preference.summary = if (policy.rawUids.isEmpty()) {
+            packageSummary
+        } else {
+            resources.getQuantityString(
+                R.plurals.capture_apps_settings_summary_with_legacy_uids,
+                policy.rawUids.size,
+                packageSummary,
+                policy.rawUids.size,
+            )
         }
     }
 

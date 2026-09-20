@@ -1,6 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.utils.notifications
 
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_DEFAULT
 import androidx.core.app.NotificationManagerCompat.IMPORTANCE_HIGH
@@ -62,6 +63,13 @@ object Notifications {
      * @param context The application context.
      */
     fun ensureChannels(context: Context) = channelInitializer.runOnce { createChannels(context) }
+
+    /**
+     * Forgets that this process already declared its channels so the next [ensureChannels] call
+     * issues the binder calls again. Only tests exercising a first-use path should need this.
+     */
+    @VisibleForTesting
+    internal fun resetForTesting() = channelInitializer.reset()
 
     /**
      * Creates the notification channels introduced in Android Oreo.

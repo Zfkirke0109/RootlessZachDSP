@@ -305,6 +305,11 @@ jobs:
             "$ANDROID_NDK_PACKAGE" \
             "$ANDROID_CMAKE_PACKAGE"
 
+      - name: Set monotonic release version code
+        # Same formula as the test-and-build job. $GITHUB_ENV does not cross jobs, so without
+        # this every tagged release would fall back to AndroidConfig.versionCode.
+        run: echo "VERSION_CODE=$((300000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
       - name: Compile and package signed privacy-first release APKs
         shell: bash
         env:

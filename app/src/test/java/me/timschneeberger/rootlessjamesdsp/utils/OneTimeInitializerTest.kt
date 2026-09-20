@@ -47,6 +47,20 @@ class OneTimeInitializerTest {
     }
 
     @Test
+    fun `reset lets the action run again`() {
+        val initializer = OneTimeInitializer()
+        val runs = AtomicInteger()
+
+        initializer.runOnce { runs.incrementAndGet() }
+        initializer.reset()
+        assertFalse(initializer.hasRun)
+        initializer.runOnce { runs.incrementAndGet() }
+
+        assertEquals(2, runs.get())
+        assertTrue(initializer.hasRun)
+    }
+
+    @Test
     fun `a failed action is retried by the next caller`() {
         val initializer = OneTimeInitializer()
         val attempts = AtomicInteger()
