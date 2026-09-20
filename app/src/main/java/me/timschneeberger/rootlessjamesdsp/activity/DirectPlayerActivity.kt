@@ -498,6 +498,8 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
                 Player.STATE_ENDED -> ordinaryPlayer.seekToDefaultPosition()
                 // A failed player sits idle with its media item retained; prepare it again.
                 Player.STATE_IDLE -> ordinaryPlayer.prepare()
+                // Buffering or ready players resume from their current position.
+                else -> Unit
             }
             ordinaryPlayer.play()
             return
