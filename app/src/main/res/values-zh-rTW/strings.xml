@@ -166,7 +166,7 @@
     <string name="onboarding_back">返回</string>
     <string name="onboarding_next">下一步</string>
     <string name="onboarding_finish">完成</string>
-    <string name="onboarding_greeting">歡迎使用 RootlessJamesDSP！</string>
+    <string name="onboarding_greeting">歡迎使用 RootlessZachDSP！</string>
     <string name="onboarding_caption">這個助理將幫助您設定此應用程式。</string>
     <string name="onboarding_warning">目前，此應用程式尚未完成且不穩定。請注意，由於使用未設計給第三方使用的 Android API，因此在某些裝置上可能無法如預期般運作。</string>
     <string name="onboarding_fix_permissions_title">需要使用者動作</string>

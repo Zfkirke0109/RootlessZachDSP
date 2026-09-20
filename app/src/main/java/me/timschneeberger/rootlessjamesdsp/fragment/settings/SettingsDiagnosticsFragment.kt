@@ -1,0 +1,253 @@
+package me.timschneeberger.rootlessjamesdsp.fragment.settings
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.preference.Preference
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.timschneeberger.rootlessjamesdsp.BuildConfig
+import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CompatibilityDiagnosticsReport
+import me.timschneeberger.rootlessjamesdsp.diagnostics.DiagnosticsLeakScanner
+import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
+import me.timschneeberger.rootlessjamesdsp.diagnostics.SourceFidelityAssessment
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
+import java.io.File
+
+/** User-facing view/copy/clear/export controls for app-private rootless diagnostics. */
+class SettingsDiagnosticsFragment : SettingsBaseFragment() {
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.app_diagnostics_preferences, rootKey)
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_source_fidelity))
+            ?.setOnPreferenceClickListener {
+                showSourceFidelity()
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_recent_events))
+            ?.setOnPreferenceClickListener {
+                showRecentEvents()
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_copy_summary))
+            ?.setOnPreferenceClickListener {
+                copySummary()
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_preview_export))
+            ?.setOnPreferenceClickListener {
+                previewAndExport()
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.key_diagnostics_clear_history))
+            ?.setOnPreferenceClickListener {
+                confirmClearHistory()
+                true
+            }
+
+        refreshStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()
+    }
+
+    private fun refreshStatus() {
+        val transport = RootlessZachDiagnostics.latestTransportSnapshot()
+        val engineSignal = RootlessZachDiagnostics.latestSignalSnapshot()
+        val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
+        val sourceFidelity = SourceFidelityAssessment.assess(trackInputSignal?.outputPeak)
+        val file = RootlessZachDiagnostics.latestDiagnosticsFile()
+        val recentCount = RootlessZachDiagnostics.readRecentLines(200).size
+        findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
+            if (transport == null) {
+                getString(R.string.rootless_zach_diagnostics_no_telemetry) + "\n" + CaptureSessionStatus.summary()
+            } else {
+                buildString {
+                    append(transport.compactString())
+                    append("\n").append(CaptureSessionStatus.summary())
+                    if (engineSignal != null) {
+                        append("\ndspEngineSamples=").append(engineSignal.sampleCount)
+                        append(" dspEngineOutputChanged=").append(engineSignal.outputChanged)
+                        append(" changedRatio=").append(engineSignal.changedSampleRatio)
+                        append(" capturedInputRms=").append(engineSignal.inputRms)
+                        append(" dspEngineOutputRms=").append(engineSignal.outputRms)
+                    } else {
+                        append("\ndspEngineSignal=not-connected-yet")
+                    }
+                    if (trackInputSignal != null) {
+                        append("\ntrackInputSamples=").append(trackInputSignal.sampleCount)
+                        append(" trackInputChanged=").append(trackInputSignal.outputChanged)
+                        append(" trackInputChangedRatio=").append(trackInputSignal.changedSampleRatio)
+                        append(" audioTrackInputRms=").append(trackInputSignal.outputRms)
+                    } else {
+                        append("\ntrackInputSignal=not-connected-yet")
+                    }
+                    append(" finalAudioTrackMixMeasured=").append(trackInputSignal != null)
+                    append(" finalSystemMixMeasured=false")
+                    append("\nstructuredEvents=").append(recentCount)
+                    append(" activeBytes=").append(file?.takeIf { it.exists() }?.length() ?: 0L)
+                }
+            }
+        findPreference<Preference>(getString(R.string.key_diagnostics_source_fidelity))?.summary =
+            sourceFidelity.compactString()
+    }
+
+    private fun showSourceFidelity() {
+        val trackInputSignal = RootlessZachDiagnostics.latestTrackInputSignalSnapshot()
+        val message = SourceFidelityAssessment.renderUserSummary(trackInputSignal?.outputPeak)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_source_fidelity_dialog_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showRecentEvents() {
+        val events = RootlessZachDiagnostics.readRecentLines(MAX_DIALOG_EVENT_LINES)
+        val message = if (events.isEmpty()) {
+            getString(R.string.rootless_zach_diagnostics_empty_events)
+        } else {
+            events.joinToString("\n").take(MAX_DIALOG_CHARACTERS)
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_diagnostics_recent_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun copySummary() {
+        val report = CompatibilityDiagnosticsReport.build(requireContext())
+        val findings = DiagnosticsLeakScanner.scan(report)
+        if (findings.isNotEmpty()) {
+            showPrivacyBlock(findings)
+            return
+        }
+        val clipboard =
+            requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(getString(R.string.rootless_zach_diagnostics_title), report),
+        )
+        requireContext().toast(R.string.rootless_zach_diagnostics_copied)
+    }
+
+    private fun previewAndExport() {
+        val bundle = buildRedactedBundle()
+        val findings = DiagnosticsLeakScanner.scan(bundle)
+        if (findings.isNotEmpty()) {
+            showPrivacyBlock(findings)
+            return
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_diagnostics_preview_title)
+            .setMessage(bundle.take(MAX_DIALOG_CHARACTERS))
+            .setPositiveButton(R.string.rootless_zach_diagnostics_share) { _, _ ->
+                shareBundle(bundle)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showPrivacyBlock(findings: List<DiagnosticsLeakScanner.Finding>) {
+        val categories = findings
+            .groupingBy { it.category }
+            .eachCount()
+            .entries
+            .sortedBy { it.key.name }
+            .joinToString("\n") { (category, count) -> "$category: $count" }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_diagnostics_export_blocked_title)
+            .setMessage(
+                getString(R.string.rootless_zach_diagnostics_export_blocked, findings.size) +
+                    "\n\n" + categories,
+            )
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun confirmClearHistory() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.rootless_zach_diagnostics_clear_title)
+            .setMessage(R.string.rootless_zach_diagnostics_clear_confirm)
+            .setPositiveButton(android.R.string.ok) { _, _ -> clearHistory() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun clearHistory() {
+        val pending = RootlessZachDiagnostics.clearHistory()
+        // Report success only once the writer thread has actually deleted the files, so an
+        // immediate export cannot still contain the records the user just cleared.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val cleared = withContext(Dispatchers.IO) {
+                runCatching { pending.get() }.getOrDefault(false)
+            }
+            if (cleared) {
+                findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
+                    getString(R.string.rootless_zach_diagnostics_cleared)
+                requireContext().toast(R.string.rootless_zach_diagnostics_cleared)
+            } else {
+                requireContext().toast(R.string.rootless_zach_diagnostics_clear_failed)
+            }
+        }
+    }
+
+    private fun buildRedactedBundle(): String {
+        val events = RootlessZachDiagnostics.readRecentLines(MAX_EXPORT_EVENT_LINES)
+        return buildString {
+            appendLine(getString(R.string.rootless_zach_diagnostics_preview_header))
+            appendLine()
+            appendLine(
+                CompatibilityDiagnosticsReport.build(
+                    context = requireContext(),
+                    recentStructuredEventCount = events.size,
+                ),
+            )
+            appendLine()
+            appendLine("[Recent structured events]")
+            events.forEach(::appendLine)
+        }
+    }
+
+    private fun shareBundle(bundle: String) {
+        val exportFile = File(requireContext().filesDir, EXPORT_FILE_NAME)
+        exportFile.writeText(bundle)
+        val uri = FileProvider.getUriForFile(
+            requireContext(),
+            BuildConfig.APPLICATION_ID + ".dump_provider",
+            exportFile,
+        )
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+                getString(R.string.rootless_zach_diagnostics_share_title),
+            ),
+        )
+    }
+
+    companion object {
+        private const val EXPORT_FILE_NAME = "rootless_zach_diagnostics_export.txt"
+        private const val MAX_DIALOG_EVENT_LINES = 100
+        private const val MAX_EXPORT_EVENT_LINES = 1_000
+        private const val MAX_DIALOG_CHARACTERS = 60_000
+    }
+}

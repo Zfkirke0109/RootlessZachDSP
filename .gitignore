@@ -1,5 +1,6 @@
 *.iml
 .gradle
+/.kotlin/
 /local.properties
 /.idea
 /.idea/caches
@@ -17,3 +18,10 @@ local.properties
 /hidden-refine-api/build/
 /app/src/main/cpp/libjamesdsp/Main/DSPManager/.idea
 /app/src/main/cpp/libjamesdsp/Main/DSPManager/DSPManager.iml
+
+# Captured device diagnostics (logcat, dumpsys, bugreports). These contain
+# device-wide and app-usage information and must never be committed or shared.
+/diagnostics/
+
+# Kotlin compiler session files (created under buildSrc/ as well as the root project)
+**/.kotlin/

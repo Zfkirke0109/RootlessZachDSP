@@ -1,0 +1,16 @@
+# pre-commit.ci runs these hooks on every pull request. The repository had no configuration,
+# which pre-commit.ci reports as "error during ci config". Only non-modifying validators are
+# enabled so the check never rewrites a contributor's branch.
+ci:
+  autofix_prs: false
+  autoupdate_schedule: quarterly
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-xml
+      - id: check-merge-conflict
+      - id: check-case-conflict

@@ -7,6 +7,7 @@ import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.backup.BackupManager
 import me.timschneeberger.rootlessjamesdsp.liveprog.EelParser
+import me.timschneeberger.rootlessjamesdsp.preference.FileLibraryPreference
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
@@ -79,13 +80,15 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
 
                 findLiveprogScriptPath(ctx)?.let { path ->
                     val liveprogFile = File(path)
-                    if (liveprogFile.exists()) {
+                    if (liveprogFile.isFile) {
                         Timber.d("Saving included liveprog script state from '$path'")
 
-                        c.metadata[META_LIVEPROG_INCLUDED] = true.toString()
-                        File(ctx.cacheDir, FILE_LIVEPROG).let {
-                            liveprogFile.copyTo(it, overwrite = true)
-                            c.add(it)
+                        File(ctx.cacheDir, FILE_LIVEPROG).let { cachedLiveprog ->
+                            if (cachedLiveprog.isDirectory) cachedLiveprog.deleteRecursively()
+                            liveprogFile.copyTo(cachedLiveprog, overwrite = true)
+                            if (c.add(cachedLiveprog)) {
+                                c.metadata[META_LIVEPROG_INCLUDED] = true.toString()
+                            }
                         }
                     }
                 }
@@ -214,9 +217,12 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
                     val node = nodes.item(i)
                     if(node.attributes.getNamedItem("name").nodeValue ==
                         ctx.getString(R.string.key_liveprog_file)) {
-                        return node.textContent.let {
-                            ctx.getExternalFilesDir(null)!!.absolutePath + "/" + it
-                        }.also {
+                        val storedPath = node.textContent.trim()
+                        if (storedPath.isBlank()) {
+                            Timber.d("No liveprog file selected")
+                            return null
+                        }
+                        return FileLibraryPreference.createFullPathCompat(ctx, storedPath).also {
                             Timber.d("Found liveprog file path: $it")
                         }
                     }

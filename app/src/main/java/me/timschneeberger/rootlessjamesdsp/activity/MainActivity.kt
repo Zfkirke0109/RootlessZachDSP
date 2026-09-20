@@ -143,6 +143,11 @@ class MainActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Routing/profile management is created on demand rather than during
+        // Application.onCreate. The UI both reads profiles and can trigger a backup restore,
+        // which ProfileManager listens for, so bring it up as soon as there is a UI.
+        (application as MainApplication).ensureProfileManager()
+
         savedInstanceState?.let {
             hasLoadFailed = it.getBoolean(STATE_LOAD_FAILED)
         }
@@ -641,6 +646,8 @@ class MainActivity : BaseActivity() {
                     when(ProcessorMessage.ConvolverErrorCode.fromInt(
                         intent.getIntExtra(ProcessorMessage.Param.ConvolverErrorCode.name, 0)
                     )) {
+                        ProcessorMessage.ConvolverErrorCode.Missing -> R.string.message_irs_missing
+                        ProcessorMessage.ConvolverErrorCode.NoFrames -> R.string.message_irs_empty
                         ProcessorMessage.ConvolverErrorCode.Corrupted -> R.string.message_irs_corrupt
                         ProcessorMessage.ConvolverErrorCode.AdvParamsInvalid -> R.string.message_convolver_advimp_invalid
                         else -> null

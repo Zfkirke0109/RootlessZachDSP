@@ -166,7 +166,7 @@
     <string name="onboarding_back">Назад</string>
     <string name="onboarding_next">Далі</string>
     <string name="onboarding_finish">Завершити</string>
-    <string name="onboarding_greeting">Ласкаво просимо до RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Ласкаво просимо до RootlessZachDSP!</string>
     <string name="onboarding_caption">Цей асистент допоможе вам виконати налаштування додатка.</string>
     <string name="onboarding_warning">Наразі додаток є незавершеним і може бути нестабільним. Зверніть увагу, що на деяких пристроях він може не працювати належним чином, оскільки використовує Android API, які не передбачені для використання сторонніми додатками.</string>
     <string name="onboarding_fix_permissions_title">Потрібна дія користувача</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Повторити</string>
     <string name="app_compat_exclude">Виключити</string>
     <string name="app_compat_title">Обробку аудіо було призупинено для запобігання дублювання звуку</string>
-    <string name="app_compat_explanation">Цей додаток не підтримується, оскільки він призводить до втрати RootlessJamesDSP контролю над маршрутизацією звуку:</string>
-    <string name="app_compat_instruction">Будь ласка, перевірте налаштування програми, щоб вимкнути апаратне прискорення (HW-acceleration) або інші налаштування, які можуть перешкодити RootlessJamesDSP і потім натисніть «Повторити».</string>
+    <string name="app_compat_explanation">Цей додаток не підтримується, оскільки він призводить до втрати RootlessZachDSP контролю над маршрутизацією звуку:</string>
+    <string name="app_compat_instruction">Будь ласка, перевірте налаштування програми, щоб вимкнути апаратне прискорення (HW-acceleration) або інші налаштування, які можуть перешкодити RootlessZachDSP і потім натисніть «Повторити».</string>
     <string name="app_compat_instruction_exclude">Як альтернативу, виберіть «Виключити», щоб обійти цю проблему, виключивши несумісну програму з обробки звуку.</string>
     <string name="app_compat_unknown_pkg_name">Невідоме ім\'я пакету</string>
     <!-- Root: Library load failure -->

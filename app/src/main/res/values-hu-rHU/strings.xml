@@ -145,7 +145,7 @@ Törlés</string>
     <string name="onboarding_back">Vissza</string>
     <string name="onboarding_next">Tovább</string>
     <string name="onboarding_finish">Kész</string>
-    <string name="onboarding_greeting">Üdv a RootlessJamesDSP-ben!</string>
+    <string name="onboarding_greeting">Üdv a RootlessZachDSP-ben!</string>
     <string name="onboarding_caption">Ez az asszisztens segít beállítani az appot.</string>
     <string name="onboarding_warning">Jelenleg ez az alkalmazás befejezettlen és instabil. Kérlek vedd figyelembe hogy néhány eszközön nem feltétlenül működik az elvártak alapján, mivel olyan Android API-kat használ, amiket nem harmadik felek általi használatra terveztek.</string>
     <string name="onboarding_fix_permissions_title">Felhasználói beavatkozás szükséges</string>

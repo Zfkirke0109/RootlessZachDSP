@@ -21,6 +21,17 @@
 
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
+        <!-- The capture-policy and exclusion lists enumerate installed apps. Android 11+
+             package visibility hides every package not declared here, so launchable apps and
+             audio handlers are requested explicitly instead of QUERY_ALL_PACKAGES. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="audio/*" />
+        </intent>
     </queries>
 
     <application
@@ -30,6 +41,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:hasFragileUserData="true"
         android:icon="@mipmap/ic_dsp_launcher"
+        android:roundIcon="@mipmap/ic_dsp_launcher"
         android:label="${label}"
         android:supportsRtl="true"
         android:theme="@style/Theme.RootlessJamesDSP"
@@ -132,6 +144,28 @@
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".activity.MainActivity" />
+        </activity>
+
+        <activity
+            android:name=".activity.DirectPlayerActivity"
+            android:exported="false"
+            android:label="@string/direct_player_title"
+            android:theme="@style/Theme.RootlessJamesDSP"
+            android:launchMode="singleTop">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".activity.SettingsActivity" />
+        </activity>
+
+        <activity
+            android:name=".activity.CaptureAppsActivity"
+            android:exported="false"
+            android:label="@string/capture_apps_title"
+            android:theme="@style/Theme.RootlessJamesDSP"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".activity.SettingsActivity" />
         </activity>
 
         <activity

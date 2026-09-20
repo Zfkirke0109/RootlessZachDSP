@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jamesdsp" translatable="false">RootlessZachDSP</string>
+
+    <string name="notification_processing_legacy">Tap to open RootlessZachDSP</string>
+    <string name="notification_request_permission_title">User action is required to launch RootlessZachDSP</string>
+    <string name="notification_request_permission">Tap to grant capture permission and enable RootlessZachDSP audio processing</string>
+
+    <string name="session_control_loss_toast">RootlessZachDSP stopped due to audio session control loss. Please disable other audio effect apps.</string>
+    <string name="session_control_loss_notification_title">Audio processing stopped. Another app is interfering with RootlessZachDSP.</string>
+    <string name="session_control_loss_notification">Please disable all other apps that provide global audio effects before re-enabling RootlessZachDSP.</string>
+    <string name="session_app_compat_toast">RootlessZachDSP stopped due to an incompatible media app. Please check the notification to resolve this problem.</string>
+    <string name="session_app_compat_notification_title">Audio processing stopped. Another app is interfering with RootlessZachDSP.</string>
+    <string name="capture_permission_revoked_toast">RootlessZachDSP has been stopped because the audio capture permission was revoked.</string>
+
+    <string name="onboarding_migration_caption">Already use an earlier RootlessZachDSP or RootlessJamesDSP build? Import its DSP backup now, or open Settings before completing setup.</string>
+    <string name="onboarding_import_backup">Import existing DSP backup</string>
+    <string name="onboarding_perm_notification_caption">Required to receive important status updates and information about RootlessZachDSP processing.</string>
+    <string name="onboarding_finish_header">RootlessZachDSP is set up!</string>
+    <string name="limit_hw_accel">Hardware-accelerated audio playback may sometimes cause duplicated audio or stop RootlessZachDSP. Add the affected media app to the excluded-apps list to prevent RootlessZachDSP from rerouting it.</string>
+
+    <string name="audio_format_enhanced_processing_info_content">When enhanced processing is enabled, you can selectively exclude apps from RootlessZachDSP. Open the three-dot menu and select Excluded apps to access this feature.\n\nWith legacy mode disabled, each compatible app receives its own processing session for finer control. Enhanced processing proactively detects media sessions when a media app does not publish the expected Android session events.</string>
+
+    <string name="editor_engine_down_title">RootlessZachDSP is not active</string>
+    <string name="editor_engine_down">Cannot run the script because RootlessZachDSP is disabled. Turn on RootlessZachDSP to execute scripts.</string>
+    <string name="revert_confirmation">Do you want to reset the current RootlessZachDSP preset to its default values?</string>
+
+    <string name="credits_project_play_page">Visit the RootlessZachDSP project page</string>
+    <string name="credits_project_play_page_summary">Check for project updates</string>
+</resources>

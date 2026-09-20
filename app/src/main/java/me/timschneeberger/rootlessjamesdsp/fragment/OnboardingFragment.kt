@@ -3,8 +3,12 @@ package me.timschneeberger.rootlessjamesdsp.fragment
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager.PERMISSION_GRANTED
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process.myUid
@@ -26,16 +30,22 @@ import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.activity.MainActivity
 import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity.Companion.EXTRA_ROOTLESS_REDO_ADB_SETUP
 import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity.Companion.EXTRA_ROOT_SETUP_DUMP_PERM
+import me.timschneeberger.rootlessjamesdsp.activity.SettingsActivity
+import me.timschneeberger.rootlessjamesdsp.backup.BackupManager
+import me.timschneeberger.rootlessjamesdsp.backup.BackupRestoreService
 import me.timschneeberger.rootlessjamesdsp.databinding.OnboardingFragmentBinding
 import me.timschneeberger.rootlessjamesdsp.flavor.RootShellImpl
 import me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService
+import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.SdkCheck
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.isPackageInstalled
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.launchApp
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.openPlayStoreApp
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.resolveColorAttribute
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.showAlert
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.toast
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasDumpPermission
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasNotificationPermission
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.PermissionExtensions.hasProjectMediaAppOp
@@ -74,10 +84,12 @@ class OnboardingFragment : Fragment() {
     private lateinit var backButton: Button
     private lateinit var nextButton: Button
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var backupImportLauncher: ActivityResultLauncher<Array<String>>
 
     private var useRoot: Boolean = false
     private var redoAdbSetup: Boolean = false
     private var shizukuAlive = false
+    private var backupRestoreReceiverRegistered = false
 
     private val prefsApp: Preferences.App by inject()
     private val prefsVar: Preferences.Var by inject()
@@ -93,6 +105,20 @@ class OnboardingFragment : Fragment() {
         updateSetupInstructions()
     }
     private val requestPermissionResultListener = OnRequestPermissionResult()
+
+    private val backupRestoreReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Constants.ACTION_BACKUP_RESTORED ->
+                    context.toast(R.string.backup_restore_completed)
+                Constants.ACTION_BACKUP_RESTORE_FAILED ->
+                    context.toast(
+                        intent.getStringExtra(Constants.EXTRA_BACKUP_RESTORE_ERROR)
+                            ?: context.getString(R.string.backup_restore_error)
+                    )
+            }
+        }
+    }
 
     private lateinit var binding: OnboardingFragmentBinding
 
@@ -112,6 +138,12 @@ class OnboardingFragment : Fragment() {
                 requireContext().showAlert(R.string.onboarding_perm_missing_title,
                     R.string.onboarding_perm_missing)
             }
+        }
+
+        backupImportLauncher = registerForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            uri?.let(::showRestoreModeDialog)
         }
     }
 
@@ -133,6 +165,12 @@ class OnboardingFragment : Fragment() {
         nextButton = controlsLayout.findViewById(R.id.next_button)
         backButton.setOnClickListener { changePage(false) }
         nextButton.setOnClickListener { changePage(true) }
+        view.findViewById<Button>(R.id.onboarding_import_backup_button).setOnClickListener {
+            openBackupFileSelection()
+        }
+        view.findViewById<Button>(R.id.onboarding_open_settings_button).setOnClickListener {
+            startActivity(Intent(requireContext(), SettingsActivity::class.java))
+        }
 
         if(useRoot || redoAdbSetup) {
             pageMap.remove(PAGE_RUNTIME_PERMISSIONS)
@@ -265,6 +303,28 @@ class OnboardingFragment : Fragment() {
         Shizuku.addRequestPermissionResultListener(requestPermissionResultListener)
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (!backupRestoreReceiverRegistered) {
+            requireContext().registerLocalReceiver(
+                backupRestoreReceiver,
+                IntentFilter().apply {
+                    addAction(Constants.ACTION_BACKUP_RESTORED)
+                    addAction(Constants.ACTION_BACKUP_RESTORE_FAILED)
+                }
+            )
+            backupRestoreReceiverRegistered = true
+        }
+    }
+
+    override fun onStop() {
+        if (backupRestoreReceiverRegistered) {
+            requireContext().unregisterLocalReceiver(backupRestoreReceiver)
+            backupRestoreReceiverRegistered = false
+        }
+        super.onStop()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("currentPage", currentPage)
         super.onSaveInstanceState(outState)
@@ -277,6 +337,53 @@ class OnboardingFragment : Fragment() {
         alert.setPositiveButton(getString(R.string.install)) { _, _ -> viewShizukuInMarket() }
         alert.setNegativeButton(android.R.string.cancel, null)
         alert.create().show()
+    }
+
+    private fun openBackupFileSelection() {
+        if (BackupRestoreService.isRunning(requireContext())) {
+            requireContext().toast(R.string.backup_in_progress)
+            return
+        }
+
+        try {
+            backupImportLauncher.launch(BackupManager.getSupportedMimeTypes())
+        } catch (_: ActivityNotFoundException) {
+            requireContext().toast(R.string.no_activity_found)
+        }
+    }
+
+    private fun showRestoreModeDialog(uri: Uri) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setItems(
+                arrayOf(
+                    getString(R.string.backup_restore_mode_clean),
+                    getString(R.string.backup_restore_mode_dirty)
+                )
+            ) { dialog, selectedMode ->
+                persistBackupReadPermission(uri)
+                if (BackupRestoreService.start(requireContext(), uri, selectedMode == 1)) {
+                    requireContext().toast(R.string.backup_restore_started)
+                } else {
+                    requireContext().toast(R.string.backup_in_progress)
+                }
+                dialog.dismiss()
+            }
+            .setTitle(R.string.backup_restore_mode_title)
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun persistBackupReadPermission(uri: Uri) {
+        try {
+            requireContext().contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (exception: SecurityException) {
+            // Some document providers only grant temporary read access. That grant is still
+            // sufficient for the foreground restore service launched from this activity.
+            Timber.w(exception, "Document provider did not grant persistent backup access")
+        }
     }
 
     override fun onDestroyView() {

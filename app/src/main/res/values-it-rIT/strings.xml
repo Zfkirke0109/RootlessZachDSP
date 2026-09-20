@@ -166,7 +166,7 @@
     <string name="onboarding_back">Indietro</string>
     <string name="onboarding_next">Avanti</string>
     <string name="onboarding_finish">Fine</string>
-    <string name="onboarding_greeting">Benvenuto in RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Benvenuto in RootlessZachDSP!</string>
     <string name="onboarding_caption">L\'assistente ti aiuterà a configurare questa applicazione.</string>
     <string name="onboarding_warning">Attualmente, questa applicazione è incompleta e instabile. Nota che potrebbe non funzionare correttamente come previsto su alcuni dispositivi, in quanto essa utilizza API Android non progettate per l\'utilizzo da parte di terzi.</string>
     <string name="onboarding_fix_permissions_title">Azione dell\'utente richiesta</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Riprova</string>
     <string name="app_compat_exclude">Escludi</string>
     <string name="app_compat_title">L\'elaborazione audio è stata sospesa per evitare duplicazioni dell\'audio</string>
-    <string name="app_compat_explanation">La seguente applicazione non è supportata perché causa perdite di controllo da parte di RootlessJamesDSP sull\'indirizzamento dell\'audio:</string>
-    <string name="app_compat_instruction">Controlla le impostazioni dell\'app se puoi disabilitare l\'accelerazione hardware o altre impostazioni che potrebbero interferire con RootlessJamesDSP e tocca \"riprova\".</string>
+    <string name="app_compat_explanation">La seguente applicazione non è supportata perché causa perdite di controllo da parte di RootlessZachDSP sull\'indirizzamento dell\'audio:</string>
+    <string name="app_compat_instruction">Controlla le impostazioni dell\'app se puoi disabilitare l\'accelerazione hardware o altre impostazioni che potrebbero interferire con RootlessZachDSP e tocca \"riprova\".</string>
     <string name="app_compat_instruction_exclude">In alternativa, seleziona \"escludi\" per eludere questo problema escludendo l\'applicazione incompatibile dall\'elaborazione audio.</string>
     <string name="app_compat_unknown_pkg_name">Nome del pacchetto sconosciuto</string>
     <!-- Root: Library load failure -->

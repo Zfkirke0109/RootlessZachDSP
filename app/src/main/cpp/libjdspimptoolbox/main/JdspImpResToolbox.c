@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include <jdsp_header.h>
 
@@ -371,7 +372,10 @@ void JamesDSPOfflineResampling(float const *in, float *out, size_t lenIn, size_t
 }
 float* loadAudioFile(const char *filename, double targetFs, unsigned int *channels, drwav_uint64 *totalPCMFrameCount, int resampleQuality)
 {
-	unsigned int fs = 1;
+	*channels = 0;
+	*totalPCMFrameCount = 0;
+	if (targetFs <= 0) return 0;
+	unsigned int fs = 0;
     const char *ext = get_filename_ext(filename);
     float *pSampleData = 0;
     if (!strncmp(ext, "wav", 5) || !strncmp(ext, "irs", 5))
@@ -380,7 +384,7 @@ float* loadAudioFile(const char *filename, double targetFs, unsigned int *channe
         pSampleData = drflac_open_file_and_read_pcm_frames_f32(filename, channels, &fs, totalPCMFrameCount, 0);
     if (!strncmp(ext, "mp3", 5))
     {
-        drmp3_config mp3Conf;
+        drmp3_config mp3Conf = {0};
         pSampleData = drmp3_open_file_and_read_pcm_frames_f32(filename, &mp3Conf, totalPCMFrameCount, 0);
         *channels = mp3Conf.channels;
         fs = mp3Conf.sampleRate;
@@ -397,7 +401,7 @@ float* loadAudioFile(const char *filename, double targetFs, unsigned int *channe
 		free(pSampleData);
 		return 0;
 	}
-	if ((*totalPCMFrameCount <= 0) || (*totalPCMFrameCount <= 0))
+	if (*totalPCMFrameCount == 0 || fs == 0 || *totalPCMFrameCount > INT_MAX / (2 * (uint64_t)*channels))
 	{
 		printf("Invalid audio sample rate / frame count");
 		free(pSampleData);
@@ -406,8 +410,14 @@ float* loadAudioFile(const char *filename, double targetFs, unsigned int *channe
 	double ratio = targetFs / (double)fs;
 	if (ratio != 1.0)
 	{
-		int compressedLen = (int)ceil(*totalPCMFrameCount * ratio);
-		float *tmpBuf = (float*)malloc(compressedLen * *channels * sizeof(float));
+        double wantedFrames = ceil(*totalPCMFrameCount * ratio);
+        if (!isfinite(wantedFrames) || wantedFrames < 1 || wantedFrames > INT_MAX / (2 * (uint64_t)*channels)) {
+            free(pSampleData);
+            return 0;
+        }
+        int compressedLen = (int)wantedFrames;
+        float *tmpBuf = (float*)malloc((size_t)compressedLen * *channels * sizeof(float));
+        if (!tmpBuf) { free(pSampleData); return 0; }
 		memset(tmpBuf, 0, compressedLen * *channels * sizeof(float));
 		JamesDSPOfflineResampling(pSampleData, tmpBuf, *totalPCMFrameCount, compressedLen, *channels, ratio, resampleQuality);
 		*totalPCMFrameCount = compressedLen;
@@ -430,22 +440,35 @@ int validateAdvImpParameter(int frameCount, int convMode, jint* advSetPtr, jsize
 JNIEXPORT jfloatArray JNICALL Java_me_timschneeberger_rootlessjamesdsp_interop_JdspImpResToolbox_ReadImpulseResponseToFloat
 (JNIEnv *env, jobject obj, jstring path, jint targetSampleRate, jintArray jImpInfo, jint convMode, jintArray jadvParam)
 {
-	const char *mIRFileName = (*env)->GetStringUTFChars(env, path, 0);
-	if (strlen(mIRFileName) <= 0) return 0;
-	unsigned int channels;
-	drwav_uint64 frameCount;
-	float *pFrameBuffer = loadAudioFile(mIRFileName, targetSampleRate, &channels, &frameCount, 1);
-	if (channels == 0 || channels == 3 || channels > 4)
-	{
-		free(pFrameBuffer);
-		return 0;
-	}
-	jint *javaAdvSetPtr = (jint*) (*env)->GetIntArrayElements(env, jadvParam, 0);
-    jsize javaAdvSetSize = (*env)->GetArrayLength(env, jadvParam);
-
-    if(javaAdvSetSize != 6) {
+    if (!path || !jImpInfo || !jadvParam || targetSampleRate <= 0 ||
+        (*env)->GetArrayLength(env, jImpInfo) < 4 ||
+        (*env)->GetArrayLength(env, jadvParam) != 6 || convMode < 0 || convMode > 2) return 0;
+    jint emptyInfo[4] = {0, 0, 0, 0};
+    (*env)->SetIntArrayRegion(env, jImpInfo, 0, 4, emptyInfo);
+    const char *mIRFileName = (*env)->GetStringUTFChars(env, path, 0);
+    if (!mIRFileName) return 0;
+    unsigned int channels = 0;
+    drwav_uint64 frameCount = 0;
+    float *pFrameBuffer = loadAudioFile(mIRFileName, targetSampleRate, &channels, &frameCount, 1);
+    (*env)->ReleaseStringUTFChars(env, path, mIRFileName);
+    if (channels == 0 || channels == 3 || channels > 4 || frameCount > INT_MAX / (2 * (uint64_t)channels)) {
+        free(pFrameBuffer);
         return 0;
     }
+    if (frameCount == 0) {
+        free(pFrameBuffer);
+        emptyInfo[0] = (jint)channels;
+        (*env)->SetIntArrayRegion(env, jImpInfo, 0, 4, emptyInfo);
+        return (*env)->NewFloatArray(env, 0);
+    }
+    if (!pFrameBuffer) return 0;
+    for (uint64_t sample = 0; sample < frameCount * channels; sample++) {
+        if (!isfinite(pFrameBuffer[sample])) { free(pFrameBuffer); return 0; }
+    }
+    jint javaAdvSet[6];
+    (*env)->GetIntArrayRegion(env, jadvParam, 0, 6, javaAdvSet);
+    jint *javaAdvSetPtr = javaAdvSet;
+    jsize javaAdvSetSize = 6;
 
     int isAdvSetValid = validateAdvImpParameter(frameCount, convMode, javaAdvSetPtr, javaAdvSetSize);
     if(!isAdvSetValid) {
@@ -521,7 +544,7 @@ JNIEXPORT jfloatArray JNICALL Java_me_timschneeberger_rootlessjamesdsp_interop_J
 				th[i].y = splittedBuffer;
 				th[i].sampleShift = range[0];
 			}
-			th[spawnNthread - 1].rangeMax = channels;
+			if (spawnNthread > 0) th[spawnNthread - 1].rangeMax = channels;
 			for (i = 0; i < spawnNthread; i++)
 				pthread_create(&pthread[i], 0, mpsMulticore, &th[i]);
 			for (i = 0; i < taskPerThread; i++)
@@ -558,8 +581,7 @@ JNIEXPORT jfloatArray JNICALL Java_me_timschneeberger_rootlessjamesdsp_interop_J
 	}
 	for (i = 0; i < channels; i++)
 		free(splittedBuffer[i]);
-	(*env)->ReleaseIntArrayElements(env, jadvParam, javaAdvSetPtr, 0);
-	jint *javaBasicInfoPtr = (jint*) (*env)->GetIntArrayElements(env, jImpInfo, 0);
+	jint javaBasicInfoPtr[4];
 	javaBasicInfoPtr[0] = (int)channels;
 	javaBasicInfoPtr[1] = (int)frameCount;
 	javaBasicInfoPtr[2] = (int)crc32;
@@ -569,7 +591,7 @@ JNIEXPORT jfloatArray JNICALL Java_me_timschneeberger_rootlessjamesdsp_interop_J
 	int frameCountTotal = channels * frameCount;
 	size_t bufferSize = frameCountTotal * sizeof(float);
 	outbuf = (*env)->NewFloatArray(env, (jsize)frameCountTotal);
-	(*env)->SetFloatArrayRegion(env, outbuf, 0, (jsize)frameCountTotal, pFrameBuffer);
+    if (outbuf) (*env)->SetFloatArrayRegion(env, outbuf, 0, (jsize)frameCountTotal, pFrameBuffer);
 	free(pFrameBuffer);
 	return outbuf;
 }

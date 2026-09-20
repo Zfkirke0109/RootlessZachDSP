@@ -12,6 +12,13 @@ import me.timschneeberger.rootlessjamesdsp.utils.notifications.Notifications
 
 class BackupNotifier(private val context: Context) {
 
+    init {
+        // Channels are no longer declared in Application.onCreate; every notification producer
+        // makes sure they exist before it posts. This is the single entry point for all
+        // backup/restore notifications.
+        Notifications.ensureChannels(context)
+    }
+
     private val notificationManager = context.getSystemService<NotificationManager>()
 
     private val progressNotificationBuilder = NotificationCompat.Builder(context, Notifications.CHANNEL_BACKUP_RESTORE_PROGRESS).apply {

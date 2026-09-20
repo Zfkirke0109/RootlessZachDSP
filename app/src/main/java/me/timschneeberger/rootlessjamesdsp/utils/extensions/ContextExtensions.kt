@@ -18,7 +18,6 @@ import android.os.Process
 import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
-import android.util.Base64
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -167,22 +166,15 @@ object ContextExtensions {
         }
     }
 
-    // Very simple & naive app cloner checks; please don't use multiple instances at once
-    private val PKGNAME_REFS = setOf("bWUudGltc2NobmVlYmVyZ2VyLnJvb3RsZXNzamFtZXNkc3A=",
-        "bWUudGltc2NobmVlYmVyZ2VyLnJvb3RsZXNzamFtZXNkc3AuZGVidWc=",
-        "amFtZXMuZHNw", "amFtZXMuZHNwLmRlYnVn")
-    private val APPNAME_REFS = setOf("Um9vdGxlc3NKYW1lc0RTUA==", "SmFtZXNEU1A=")
     fun Context.check(): Int {
-        val appName = getAppName()
-        if(isPlugin()) return 0
-        if(PKGNAME_REFS.none { decode(it) == packageName }) return 1
-        if(APPNAME_REFS.none { decode(it) == appName }) return 2
-        if(!BuildConfig.DEBUG && packageName.contains("debug")) return 3
-        return 0
-    }
-
-    private fun decode(input: String): String {
-        return String(Base64.decode(input, 0), Charsets.UTF_8)
+        return AppIdentityValidator.check(
+            actualPackageName = packageName,
+            actualAppName = getAppName(),
+            expectedPackageName = BuildConfig.APPLICATION_ID,
+            expectedAppName = BuildConfig.EXPECTED_APP_NAME,
+            isPlugin = isPlugin(),
+            isDebug = BuildConfig.DEBUG,
+        )
     }
 
     fun Context.sendLocalBroadcast(intent: Intent) {

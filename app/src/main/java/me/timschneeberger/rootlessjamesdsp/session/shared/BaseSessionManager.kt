@@ -1,5 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.session.shared
 
+import me.timschneeberger.rootlessjamesdsp.session.dump.SessionSnapshotSelector
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -22,8 +24,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.runInterruptible
+import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionPolicyInfoDump
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.model.preference.SessionUpdateMode
 import me.timschneeberger.rootlessjamesdsp.service.NotificationListenerService
@@ -57,8 +62,24 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     private var pollingTimeout = 3000L
 
     // Polling job
-    private val pollingMutex = Mutex()
-    private val pollingScope = CoroutineScope(Dispatchers.Main)
+    private val pollingScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var destroyed = false
+    protected data class PollSnapshot(val selection: SessionSnapshotSelector.Result,
+        val policies: ISessionPolicyInfoDump? = selection.policies) {
+        val sessions get() = selection.dump
+    }
+    protected open fun collectSnapshot(): PollSnapshot = PollSnapshot(dumpManager.collectSessions())
+    protected open fun applySnapshot(snapshot: PollSnapshot) = handleSessionDump(snapshot.sessions)
+    private val poller = SessionPoller(pollingScope, Dispatchers.IO,
+        collect = { runInterruptible { collectSnapshot() } },
+        apply = {
+            // Publish only after SessionPoller has checked lifecycle and method generation.
+            val result = it.selection
+            CaptureSessionStatus.queryCompleted(result.dump != null, result.usableSessions,
+                result.providersTried, result.failedProviders)
+            applySnapshot(it)
+        },
+        onFailure = { Timber.w(it, "Session snapshot unavailable") })
     private var continuousPollingJob: Job? = null
 
     // Callbacks
@@ -103,6 +124,13 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     @CallSuper
     open fun destroy()
     {
+        if (destroyed) return
+        destroyed = true
+        poller.close()
+        continuousPollingJob?.cancel()
+        continuousPollingJob = null
+        pollingScope.cancel()
+        preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
         Timber.d("Destroying SessionDumpManager")
 
         dumpManager.unregisterOnDumpMethodChangeListener(this)
@@ -157,12 +185,15 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
 
     private fun updatePollingMode()
     {
+        if (destroyed) return
+        continuousPollingJob?.cancel()
+        continuousPollingJob = null
         when (sessionUpdateMode) {
             SessionUpdateMode.ContinuousPolling -> {
                 continuousPollingJob = pollingScope.launch {
-                    while(continuousPollingJob != null && continuousPollingJob?.isCancelled == false)
+                    while(isActive && !destroyed)
                     {
-                        pollSessionDump()
+                        poller.request()
                         delay(pollingTimeout)
                     }
                 }
@@ -173,28 +204,13 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
         }
     }
 
-    private suspend fun pollSessionDump(blocking: Boolean = true)
-    {
-        if(pollingMutex.isLocked && !blocking)
-        {
-            return
-        }
-
-        pollingMutex.withLock {
-            handleSessionDump(dumpManager.dumpSessions())
-        }
-    }
-
-    fun pollOnce(blocking: Boolean)
-    {
-        pollingScope.launch {
-            pollSessionDump(blocking)
-        }
+    fun pollOnce(@Suppress("UNUSED_PARAMETER") blocking: Boolean) {
+        pollingScope.launch { if (!destroyed) poller.request() }
     }
 
     @CallSuper
     override fun onDumpMethodChange(method: DumpManager.Method) {
-        pollOnce(true)
+        if (!destroyed) poller.invalidate()
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {

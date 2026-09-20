@@ -163,7 +163,7 @@
     <string name="onboarding_back">Zpět</string>
     <string name="onboarding_next">Další</string>
     <string name="onboarding_finish">Dokončit</string>
-    <string name="onboarding_greeting">Vítejte v RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Vítejte v RootlessZachDSP!</string>
     <string name="onboarding_caption">Tento asistent vám pomůže nastavit tuto aplikaci.</string>
     <string name="onboarding_warning">Tato aplikace je v současné době nedokončená a nestabilní. Vezměte prosím na vědomí, že nemusí správně fungovat na některých zařízeních, protože používá Android API, která není navržena pro použití třetími stranami.</string>
     <string name="onboarding_fix_permissions_title">Vyžadována akce uživatele</string>
@@ -504,8 +504,8 @@
     <string name="app_compat_retry">Zkusit znovu</string>
     <string name="app_compat_exclude">Vyloučit</string>
     <string name="app_compat_title">Zpracování zvuku bylo pozastaveno, aby se zabránilo duplicitnímu zvuku</string>
-    <string name="app_compat_explanation">Následující aplikace není podporována, protože způsobuje RootlessJamesDSP ztrátu kontroly nad směrováním zvuku:</string>
-    <string name="app_compat_instruction">Prosím zkontrolujte nastavení aplikace, jestli nemůžete zakázat HW akceleraci nebo jiná nastavení, která by mohla narušit chod RootlessJamesDSP a klepněte na \'Zkusit znovu\'.</string>
+    <string name="app_compat_explanation">Následující aplikace není podporována, protože způsobuje RootlessZachDSP ztrátu kontroly nad směrováním zvuku:</string>
+    <string name="app_compat_instruction">Prosím zkontrolujte nastavení aplikace, jestli nemůžete zakázat HW akceleraci nebo jiná nastavení, která by mohla narušit chod RootlessZachDSP a klepněte na \'Zkusit znovu\'.</string>
     <string name="app_compat_instruction_exclude">Případně zvolte „Vyloučit“ pro obejití tohoto problému vyloučením nekompatibilní aplikace ze zpracování zvuku.</string>
     <string name="app_compat_unknown_pkg_name">Neznámý název balíčku</string>
     <!-- Root: Library load failure -->

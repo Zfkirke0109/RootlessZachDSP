@@ -13,7 +13,6 @@
             app:summary="@string/backup_restore_summary"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
-c
     <PreferenceCategory app:title="@string/backup_automatic_backup"
         app:iconSpaceReserved="false">
         <ListPreference

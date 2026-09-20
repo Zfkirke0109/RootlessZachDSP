@@ -45,6 +45,10 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         }
     }
 
+    /** Waitable variant for source-owning playback, where no PCM may run before settings apply. */
+    suspend fun syncWithPreferencesAndWait(forceUpdateNamespaces: Array<String>? = null): Set<String> =
+        syncWithPreferencesAsync(forceUpdateNamespaces)
+
     fun clearCache() {
         cache.clear()
     }
@@ -55,10 +59,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         })
     }
 
-    private suspend fun syncWithPreferencesAsync(forceUpdateNamespaces: Array<String>? = null) {
+    private suspend fun syncWithPreferencesAsync(
+        forceUpdateNamespaces: Array<String>? = null,
+    ): Set<String> {
         Timber.d("Synchronizing with preferences... (forced: %s)", forceUpdateNamespaces?.joinToString(";") { it })
 
-        syncMutex.withLock {
+        return syncMutex.withLock {
             cache.select(Constants.PREF_OUTPUT)
             val outputPostGain = cache.get(R.string.key_output_postgain, 0f)
             val limiterThreshold = cache.get(R.string.key_limiter_threshold, -0.1f)
@@ -121,6 +127,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val convolverMode = cache.get(R.string.key_convolver_mode, "0").toInt()
 
             val targets = cache.changedNamespaces.toTypedArray() + (forceUpdateNamespaces ?: arrayOf())
+            val appliedNamespaces = linkedSetOf<String>()
             targets.forEach {
                 Timber.i("Committing new changes in namespace '$it'")
 
@@ -144,10 +151,14 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
                 if(!result) {
                     Timber.e("Failed to apply $it")
                 }
+                else {
+                    appliedNamespaces += it
+                }
             }
 
             cache.markChangesAsCommitted()
             Timber.i("Preferences synchronized")
+            appliedNamespaces
         }
     }
 
@@ -200,14 +211,29 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         } ?: false
     }
 
+    protected open fun reportConvolverStatus(state: String) = Unit
+
     fun setConvolver(enable: Boolean, impulseResponsePath: String, optimizationMode: Int, waveEditStr: String): Boolean
     {
+        if (!enable) {
+            setConvolverInternal(false, FloatArray(0), 0, 0, 0)
+            reportConvolverStatus("DISABLED")
+            return true
+        }
+        if (impulseResponsePath.isBlank()) {
+            setConvolverInternal(false, FloatArray(0), 0, 0, 0)
+            reportConvolverStatus("MISSING_IR")
+            callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Missing)
+            return false
+        }
+
         val path = FileLibraryPreference.createFullPathCompat(context, impulseResponsePath)
 
-        // Handle disabled state before everything else
-        if(!enable || !File(path).exists() || File(path).isDirectory) {
+        if(!File(path).isFile || !File(path).canRead()) {
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            return true
+            reportConvolverStatus("MISSING_IR")
+            callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Missing)
+            return false
         }
 
         val advConv = waveEditStr.split(";")
@@ -241,6 +267,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         )
 
         if(imp == null) {
+            reportConvolverStatus("INVALID_IR")
             Timber.e("setConvolver: Failed to read IR")
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Corrupted)
@@ -248,7 +275,8 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         }
 
         // check frame count
-        if(info[1] == 0) {
+        if(info[1] <= 0) {
+            reportConvolverStatus("EMPTY_IR")
             Timber.e("setConvolver: IR has no frames")
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.NoFrames)
@@ -261,7 +289,16 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.AdvParamsInvalid)
         }
 
-        return setConvolverInternal(true, imp, info[0], info[1], info[2])
+        if (!ImpulseResponseValidation.valid(imp, info[0], info[1])) {
+            setConvolverInternal(false, FloatArray(0), 0, 0, 0)
+            reportConvolverStatus("INVALID_IR_DIMENSIONS_OR_SAMPLES")
+            callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Corrupted)
+            return false
+        }
+        val applied = setConvolverInternal(true, imp, info[0], info[1], info[2])
+        reportConvolverStatus(if (applied) "APPLIED" else "NATIVE_LOAD_FAILED")
+        if (!applied) setConvolverInternal(false, FloatArray(0), 0, 0, 0)
+        return applied
     }
 
     fun setGraphicEq(enable: Boolean, bands: String): Boolean
@@ -364,11 +401,23 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
     fun setLiveprog(enable: Boolean, path: String): Boolean
     {
+        if (!enable) {
+            setLiveprogInternal(false, "", "")
+            return true
+        }
+
+        if (path.isBlank()) {
+            Timber.i("setLiveprog: no file selected; keeping LiveProg disabled")
+            setLiveprogInternal(false, "", "")
+            return true
+        }
+
         val fullPath = FileLibraryPreference.createFullPathCompat(context, path)
 
-        if(!File(fullPath).exists() || File(fullPath).isDirectory) {
+        if(!File(fullPath).isFile) {
             Timber.w("setLiveprog: file does not exist")
-            return setLiveprogInternal(false, "", "")
+            setLiveprogInternal(false, "", "")
+            return false
         }
 
         return safeFileReader(fullPath)?.use {

@@ -163,7 +163,7 @@
     <string name="onboarding_back">Voltar</string>
     <string name="onboarding_next">Avançar</string>
     <string name="onboarding_finish">Concluído</string>
-    <string name="onboarding_greeting">Bem-vindo ao RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Bem-vindo ao RootlessZachDSP!</string>
     <string name="onboarding_caption">Este assistente irá ajudá-lo a configurar este app.</string>
     <string name="onboarding_warning">Atualmente, este aplicativo está incompleto e instável. Por favor, note que pode não funcionar em alguns dispositivos como esperado visto que usa APIs Android não projetadas para uso por terceiros.</string>
     <string name="onboarding_fix_permissions_title">Ação do usuário necessária</string>
@@ -498,7 +498,7 @@
     <string name="app_compat_retry">Tente novamente</string>
     <string name="app_compat_exclude">Excluir</string>
     <string name="app_compat_title">O processamento de áudio foi suspenso para evitar a duplicação de áudio</string>
-    <string name="app_compat_explanation">O seguinte app não é suportado porque faz com que RootlessJamesDSP perca o controle do roteamento de áudio:</string>
+    <string name="app_compat_explanation">O seguinte app não é suportado porque faz com que RootlessZachDSP perca o controle do roteamento de áudio:</string>
     <!-- Root: Library load failure -->
     <!-- Enhanced processing -->
     <!-- App list -->

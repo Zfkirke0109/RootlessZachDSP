@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:icon="@mipmap/ic_rootless_zach_launcher"
+        android:roundIcon="@mipmap/ic_rootless_zach_launcher"
+        android:theme="@style/Theme.RootlessZachDSP"
+        tools:replace="android:icon,android:roundIcon,android:theme">
+
+        <activity
+            android:name=".activity.MainActivity"
+            android:icon="@mipmap/ic_rootless_zach_launcher"
+            android:label="@string/jamesdsp"
+            android:theme="@style/Theme.RootlessZachDSP.Starting"
+            tools:replace="android:icon,android:label,android:theme" />
+
+        <service
+            android:name=".service.QuickTileService"
+            android:label="@string/jamesdsp"
+            tools:replace="android:label" />
+    </application>
+</manifest>

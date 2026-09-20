@@ -16,10 +16,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
+import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.SdkCheck
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.CompatExtensions.getParcelableAs
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.acquireWakeLock
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.isServiceRunning
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import me.timschneeberger.rootlessjamesdsp.utils.notifications.Notifications
 import timber.log.Timber
 
@@ -47,14 +49,15 @@ class BackupRestoreService : Service() {
          * @param context context of application
          * @param uri path of Uri
          */
-        fun start(context: Context, uri: Uri, dirtyRestore: Boolean) {
-            if (!isRunning(context)) {
-                val intent = Intent(context, BackupRestoreService::class.java).apply {
-                    putExtra(EXTRA_URI, uri)
-                    putExtra(EXTRA_DIRTY, dirtyRestore)
-                }
-                ContextCompat.startForegroundService(context, intent)
+        fun start(context: Context, uri: Uri, dirtyRestore: Boolean): Boolean {
+            if (isRunning(context)) return false
+
+            val intent = Intent(context, BackupRestoreService::class.java).apply {
+                putExtra(EXTRA_URI, uri)
+                putExtra(EXTRA_DIRTY, dirtyRestore)
             }
+            ContextCompat.startForegroundService(context, intent)
+            return true
         }
     }
 
@@ -126,6 +129,12 @@ class BackupRestoreService : Service() {
             Timber.i(exception)
 
             notifier.showRestoreError(exception.message)
+            sendLocalBroadcast(
+                Intent(Constants.ACTION_BACKUP_RESTORE_FAILED).putExtra(
+                    Constants.EXTRA_BACKUP_RESTORE_ERROR,
+                    exception.message
+                )
+            )
             stopSelf(startId)
         }
 

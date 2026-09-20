@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_capture_apps" translatable="false">capture_apps</string>
+    <string name="capture_apps_title">Audio app capture selection</string>
+    <string name="capture_apps_settings_summary">Choose which visible apps Android is asked to include or exclude from rootless playback capture</string>
+    <plurals name="capture_apps_settings_summary_exclude">
+        <item quantity="one">Exclude mode · %1$d selected package</item>
+        <item quantity="other">Exclude mode · %1$d selected packages</item>
+    </plurals>
+    <plurals name="capture_apps_settings_summary_allow">
+        <item quantity="one">Allow-only mode · %1$d selected package</item>
+        <item quantity="other">Allow-only mode · %1$d selected packages</item>
+    </plurals>
+    <plurals name="capture_apps_settings_summary_with_legacy_uids">
+        <item quantity="one">%1$s · plus %2$d legacy UID rule</item>
+        <item quantity="other">%1$s · plus %2$d legacy UID rules</item>
+    </plurals>
+
+    <string name="capture_policy_limitations">This screen controls Android’s playback-capture request by app UID, so apps sharing a UID are affected together. Existing session exclusions still apply. This cannot bypass an app’s capture policy, DRM, protected audio path, or package-visibility limits. Amazon Music capture is unverified and may be blocked. Android exposes no reliable list of capturable audio apps, so all visible installed apps are shown.</string>
+    <string name="capture_mode_exclude">Exclude checked apps; request other capturable apps</string>
+    <string name="capture_mode_allow">Allow only checked apps; request no other apps</string>
+    <plurals name="capture_policy_exclude_status">
+        <item quantity="one">Other capturable apps requested; %1$d selected package excluded.</item>
+        <item quantity="other">Other capturable apps requested; %1$d selected packages excluded.</item>
+    </plurals>
+    <plurals name="capture_policy_allow_status">
+        <item quantity="one">Only %1$d selected package is requested; Android may still block its PCM.</item>
+        <item quantity="other">Only %1$d selected packages are requested; Android may still block their PCM.</item>
+    </plurals>
+    <string name="capture_policy_allow_empty_status">No external app package is selected, so no external app PCM is requested.</string>
+    <plurals name="capture_legacy_uid_warning">
+        <item quantity="one">%1$d legacy raw UID rule is also active and will be retained.</item>
+        <item quantity="other">%1$d legacy raw UID rules are also active and will be retained.</item>
+    </plurals>
+    <string name="capture_clear_legacy_uids">Clear UID rules</string>
+    <string name="capture_legacy_uids_pending_clear">Legacy UID rules will be cleared only if you save this policy.</string>
+    <string name="capture_app_filter_hint">Filter visible apps or package names</string>
+    <string name="capture_apps_loading">Loading visible installed apps</string>
+    <string name="capture_apps_load_failed">Android did not return a visible app list. Saved selections are retained and remain removable.</string>
+    <string name="capture_apps_empty">No visible apps match this filter.</string>
+    <string name="capture_policy_save">Save capture policy</string>
+    <string name="capture_policy_saved">Capture policy saved. An active rootless session will rebuild its capture request.</string>
+    <string name="capture_app_summary">%1$s · UID %2$d</string>
+    <string name="capture_app_system_summary">%1$s · system app · UID %2$d</string>
+    <string name="capture_app_disabled_summary">%1$s · disabled · UID %2$d</string>
+    <string name="capture_app_missing_summary">%1$s · not installed or not visible; saved selection retained</string>
+    <string name="capture_app_toggle_description">Change capture selection for %1$s</string>
+</resources>

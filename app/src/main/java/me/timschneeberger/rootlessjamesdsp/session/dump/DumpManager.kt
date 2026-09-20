@@ -3,6 +3,8 @@ package me.timschneeberger.rootlessjamesdsp.session.dump
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
+import android.os.Process
+import me.timschneeberger.rootlessjamesdsp.utils.isRootless
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionInfoDump
@@ -36,6 +38,7 @@ class DumpManager constructor(val context: Context): KoinComponent {
         Method.AudioFlingerService to AudioFlingerServiceDumpProvider()
         )
 
+    @Volatile
     private var activeDumpMethod: Method = Method.AudioPolicyService
         set(value) {
             field = value
@@ -51,36 +54,15 @@ class DumpManager constructor(val context: Context): KoinComponent {
         preferences.registerOnSharedPreferenceChangeListener(preferencesListener)
     }
 
-    fun dumpSessions(): ISessionInfoDump? {
-        val preferred = availableDumpMethods[activeDumpMethod]
-        var dump: ISessionInfoDump? = null
-        try {
-            dump = preferred?.dump(context)
-        } catch (ex: Exception) {
-            Timber.e("Exception raised while dumping session info using method ${activeDumpMethod.name} (id ${activeDumpMethod})")
-            Timber.e(ex)
-        }
-
-        if(!allowFallback || (dump != null && dump.sessions.isNotEmpty()))
-        {
-            return dump
-        }
-
-        availableDumpMethods.forEach {
-                Timber.d("Falling back to method: ${it.key.name}")
-
-                if(it.key != activeDumpMethod)
-                {
-                    dump = it.value.dump(context)
-                }
-                if(dump != null && dump!!.sessions.isNotEmpty())
-                {
-                    return dump
-                }
-        }
-
-        Timber.e("Failed to find session info using any method")
-        return null
+    fun collectSessions(): SessionSnapshotSelector.Result {
+        val method = activeDumpMethod
+        val methods = listOf(method) + if (allowFallback) {
+            availableDumpMethods.keys.filter { it != method && it != Method.AudioFlingerService }
+        } else emptyList()
+        return SessionSnapshotSelector.select(
+            methods.map { selected -> { availableDumpMethods[selected]?.dump(context) } },
+            Process.myUid(), isRootless(),
+        )
     }
 
     fun dumpCaptureAllowlistLog(): ISessionPolicyInfoDump? {
@@ -112,7 +94,7 @@ class DumpManager constructor(val context: Context): KoinComponent {
     fun collectDebugDumps(): String {
         var exceptionRaised = false
         val sb = StringBuilder("Application version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")
-        sb.append("Package: ${context.packageName}")
+        sb.append("Package: ${context.packageName}\n")
         sb.append("Commit: ${BuildConfig.COMMIT_SHA}; commits since release: ${BuildConfig.COMMIT_COUNT}; debug build: ${BuildConfig.DEBUG}\n")
         sb.append("Device model: ${Build.MANUFACTURER}; ${Build.PRODUCT}; ${Build.MODEL}; ${Build.DEVICE}\n")
         sb.append("Device fingerprint: ${Build.FINGERPRINT}\n")

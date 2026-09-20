@@ -147,6 +147,7 @@ class FileLibraryPreference(context: Context, attrs: AttributeSet?) :
          * If path is relative to the external files dir, it needs to be changed to use a full path.
          */
         fun createFullPathCompat(context: Context, path: String): String {
+            if (path.isBlank()) return ""
             return if(path.startsWith("/"))
                 path
             else {

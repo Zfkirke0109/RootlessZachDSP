@@ -166,7 +166,7 @@
     <string name="onboarding_back">Назад</string>
     <string name="onboarding_next">Далее</string>
     <string name="onboarding_finish">Завершить</string>
-    <string name="onboarding_greeting">Добро пожаловать в RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Добро пожаловать в RootlessZachDSP!</string>
     <string name="onboarding_caption">Этот ассистент поможет вам выполнить настройку приложения.</string>
     <string name="onboarding_warning">В данный момент приложение является незавершенным и может быть нестабильным. Обратите внимание, что на некоторых устройствах оно может не работать должным образом, поскольку использует Android API, которые не предусмотрены для использования сторонними приложениями.</string>
     <string name="onboarding_fix_permissions_title">Требуется действие пользователя</string>
@@ -507,8 +507,8 @@
     <string name="app_compat_retry">Повторить</string>
     <string name="app_compat_exclude">Исключить</string>
     <string name="app_compat_title">Обработка аудио была приостановлена для предотвращения дублирования звука</string>
-    <string name="app_compat_explanation">Данное приложение не поддерживается, так как оно приводит к потере RootlessJamesDSP контроля над маршрутизацией звука:</string>
-    <string name="app_compat_instruction">Пожалуйста, проверьте настройки приложения, чтобы выключить аппаратное ускорение (HW-acceleration) или другие настройки, которые могут помешать RootlessJamesDSP и затем нажмите «Повторить».</string>
+    <string name="app_compat_explanation">Данное приложение не поддерживается, так как оно приводит к потере RootlessZachDSP контроля над маршрутизацией звука:</string>
+    <string name="app_compat_instruction">Пожалуйста, проверьте настройки приложения, чтобы выключить аппаратное ускорение (HW-acceleration) или другие настройки, которые могут помешать RootlessZachDSP и затем нажмите «Повторить».</string>
     <string name="app_compat_instruction_exclude">В качестве альтернативы, выберите «Исключить», чтобы обойти эту проблему, исключив несовместимое приложение из обработки звука.</string>
     <string name="app_compat_unknown_pkg_name">Неизвестное имя пакета</string>
     <!-- Root: Library load failure -->

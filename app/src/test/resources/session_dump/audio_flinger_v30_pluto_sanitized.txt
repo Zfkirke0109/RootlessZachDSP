@@ -1,0 +1,8 @@
+AudioFlinger dump (sanitized regression fixture)
+Global session refs
+  session cnt pid uid name
+  21673 1 4101 12001 rootlesszachdsp
+  21593 1 4202 12002 music-player
+  21681 1 4101 12001 rootlesszachdsp
+  21681 1 4101 12001 rootlesszachdsp
+mSystemReady=1

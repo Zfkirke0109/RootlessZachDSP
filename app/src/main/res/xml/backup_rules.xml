@@ -8,4 +8,6 @@
 <full-backup-content>
     <include domain="sharedpref" path="."/>
     <exclude domain="sharedpref" path="variable.xml" />
+    <!-- Package selections are private and raw Android UIDs are not portable across devices. -->
+    <exclude domain="sharedpref" path="rootless_zach_capture_policy.xml" />
 </full-backup-content>

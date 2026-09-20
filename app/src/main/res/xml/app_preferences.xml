@@ -22,11 +22,30 @@
         app:fragment="me.timschneeberger.rootlessjamesdsp.fragment.settings.SettingsDeviceProfilesFragment" />
 
     <Preference
+        app:key="@string/key_direct_player"
+        app:title="@string/direct_player_title"
+        app:summary="@string/direct_player_settings_summary"
+        app:icon="@drawable/ic_twotone_volume_up_24dp" />
+
+    <Preference
+        app:key="@string/key_capture_apps"
+        app:title="@string/capture_apps_title"
+        app:summary="@string/capture_apps_settings_summary"
+        app:icon="@drawable/ic_twotone_headphones_24dp" />
+
+    <Preference
         app:key="@string/key_troubleshooting"
         app:title="@string/troubleshooting"
         app:summary="@string/troubleshooting_summary"
         app:icon="@drawable/ic_twotone_troubleshoot_24dp"
         app:fragment="me.timschneeberger.rootlessjamesdsp.fragment.settings.SettingsTroubleshootingFragment" />
+
+    <Preference
+        app:key="@string/key_diagnostics"
+        app:title="@string/rootless_zach_diagnostics_title"
+        app:summary="@string/rootless_zach_diagnostics_summary"
+        app:icon="@drawable/ic_twotone_troubleshoot_24dp"
+        app:fragment="me.timschneeberger.rootlessjamesdsp.fragment.settings.SettingsDiagnosticsFragment" />
 
     <Preference
         app:key="@string/key_backup"

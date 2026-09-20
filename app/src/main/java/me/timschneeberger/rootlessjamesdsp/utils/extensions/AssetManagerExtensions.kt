@@ -9,32 +9,40 @@ import java.io.FileOutputStream
 object AssetManagerExtensions {
     fun AssetManager.installPrivateAssets(context: Context, force: Boolean) {
         Timber.d("Installing private assets; force=$force")
-        context.getExternalFilesDir(null)?.absolutePath?.let {
-            try {
-                this.copyAssetDir("Convolver", it, force)
-                this.copyAssetDir("DDC", it, force)
-                this.copyAssetDir("Liveprog", it, force)
-            }
-            catch (ex: Exception) {
-                Timber.e("Failed to extract assets")
-                Timber.e(ex)
-            }
+
+        val destinationRoot = context.getExternalFilesDir(null) ?: context.filesDir
+        if (!destinationRoot.exists() && !destinationRoot.mkdirs()) {
+            Timber.e("Unable to create private asset directory: ${destinationRoot.absolutePath}")
+            return
+        }
+        if (!destinationRoot.isDirectory) {
+            Timber.e("Private asset path is not a directory: ${destinationRoot.absolutePath}")
+            return
+        }
+
+        try {
+            this.copyAssetDir("Convolver", destinationRoot.absolutePath, force)
+            this.copyAssetDir("DDC", destinationRoot.absolutePath, force)
+            this.copyAssetDir("Liveprog", destinationRoot.absolutePath, force)
+        }
+        catch (ex: Exception) {
+            Timber.e(ex, "Failed to extract private assets into ${destinationRoot.absolutePath}")
         }
     }
 
     private fun AssetManager.copyAssetDir(assetPath: String, destDirPath: String, force: Boolean) {
-        this.walkAssetDir(assetPath, force) {
+        this.walkAssetDir(assetPath) {
             this.copyAssetFile(it, "$destDirPath/$it", force)
         }
     }
 
-    private fun AssetManager.walkAssetDir(assetPath: String, force: Boolean, callback: ((String) -> Unit)) {
+    private fun AssetManager.walkAssetDir(assetPath: String, callback: ((String) -> Unit)) {
         val children = this.list(assetPath) ?: return
         if (children.isEmpty()) {
             callback(assetPath)
         } else {
             for (child in children) {
-                this.walkAssetDir("$assetPath/$child", force, callback)
+                this.walkAssetDir("$assetPath/$child", callback)
             }
         }
     }
@@ -45,12 +53,18 @@ object AssetManagerExtensions {
             return null
         }
 
-        File(destFile.parent!!).mkdirs()
-        destFile.createNewFile()
+        val parent = destFile.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw IllegalStateException("Unable to create asset directory: ${parent.absolutePath}")
+        }
+        if (parent?.isDirectory == false) {
+            throw IllegalStateException("Asset parent is not a directory: ${parent.absolutePath}")
+        }
 
         this.open(assetPath).use { src ->
-            FileOutputStream(destFile).use { dest ->
+            FileOutputStream(destFile, false).use { dest ->
                 src.copyTo(dest)
+                dest.fd.sync()
             }
         }
 

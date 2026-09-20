@@ -32,6 +32,7 @@ object ServiceNotificationHelper: KoinComponent {
     private val preferences: Preferences.App by inject()
 
     fun pushPermissionPromptNotification(context: Context) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STARTUP)
             .setContentTitle(context.getString(R.string.notification_request_permission_title))
             .setContentText(context.getString(R.string.notification_request_permission))
@@ -107,35 +108,40 @@ object ServiceNotificationHelper: KoinComponent {
         context: Context,
         title: String,
         message: String
-    ) = NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
-        .setShowWhen(false)
-        .setOnlyAlertOnce(true)
-        .setCategory(Notification.CATEGORY_SERVICE)
-        .setContentTitle(title)
-        .setContentText(message)
-        .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                context,
-                0,
-                Intent(context, MainActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                or Intent.FLAG_ACTIVITY_NEW_TASK
-                    )
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    ): Notification {
+        // Both the legacy/root and rootless entry points must create the channel before posting.
+        Notifications.ensureChannels(context)
+        return NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    or Intent.FLAG_ACTIVITY_NEW_TASK
+                        )
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
-        )
-        .setOngoing(true)
-        .apply {
-            if(isRootless())
-                addAction(createStopAction(context))
-        }
-        .build()
+            .setOngoing(true)
+            .apply {
+                if(isRootless())
+                    addAction(createStopAction(context))
+            }
+            .build()
+    }
 
-    fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) =
+    fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_SESSION_LOSS)
             .setContentTitle(context.getString(R.string.session_control_loss_notification_title))
             .setContentText(context.getString(R.string.session_control_loss_notification))
@@ -159,9 +165,11 @@ object ServiceNotificationHelper: KoinComponent {
                 context.getSystemService<NotificationManager>()
                     ?.notify(Notifications.ID_SERVICE_SESSION_LOSS, it)
             }
+    }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun pushAppIssueNotification(context: Context, projectionIntent: Intent?, appUid: Int) {
+        Notifications.ensureChannels(context)
         NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_APP_COMPAT)
             .setContentTitle(context.getString(R.string.session_app_compat_notification_title))
             .setContentText(context.getString(R.string.session_app_compat_notification))

@@ -166,7 +166,7 @@
     <string name="onboarding_back">กลับ</string>
     <string name="onboarding_next">ถัดไป</string>
     <string name="onboarding_finish">เสร็จ</string>
-    <string name="onboarding_greeting">ยินดีต้อนรับสู่ RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">ยินดีต้อนรับสู่ RootlessZachDSP!</string>
     <string name="onboarding_caption">ผู้ช่วยนี้จะช่วยคุณตั้งค่าแอพนี้ </string>
     <string name="onboarding_warning">ปัจจุบัน แอปพลิเคชันนี้ยังไม่เสร็จสมบูรณ์และไม่เสถียร  โปรดทราบว่าอาจใช้ไม่ได้กับอุปกรณ์บางอย่างตามที่คาดไว้ เนื่องจากใช้ Android APIs ที่ไม่ได้ออกแบบมาเพื่อใช้งานโดยบุคคลที่สาม</string>
     <string name="onboarding_fix_permissions_title">ผู้ใช้ต้องดำเนินการ</string>
@@ -508,8 +508,8 @@
     <string name="app_compat_retry">ลองอีกครั้ง</string>
     <string name="app_compat_exclude">ไม่รวม</string>
     <string name="app_compat_title">การประมวลผลเสียงถูกระงับเพื่อป้องกันเสียงที่ซ้ำกัน</string>
-    <string name="app_compat_explanation">แอปต่อไปนี้ไม่ได้รับการสนับสนุนเนื่องจากทำให้ RootlessJamesDSP สูญเสียการควบคุมการกำหนดเส้นทางเสียง:</string>
-    <string name="app_compat_instruction">โปรดตรวจสอบการตั้งค่าของแอป หากคุณสามารถปิดใช้งานการเร่ง HW หรือการตั้งค่าอื่นๆ ที่อาจรบกวน RootlessJamesDSP และแตะ \'ลองอีกครั้ง\'</string>
+    <string name="app_compat_explanation">แอปต่อไปนี้ไม่ได้รับการสนับสนุนเนื่องจากทำให้ RootlessZachDSP สูญเสียการควบคุมการกำหนดเส้นทางเสียง:</string>
+    <string name="app_compat_instruction">โปรดตรวจสอบการตั้งค่าของแอป หากคุณสามารถปิดใช้งานการเร่ง HW หรือการตั้งค่าอื่นๆ ที่อาจรบกวน RootlessZachDSP และแตะ \'ลองอีกครั้ง\'</string>
     <string name="app_compat_instruction_exclude">หรืออีกทางหนึ่ง เลือก \'ยกเว้น\' เพื่อข้ามปัญหานี้โดยยกเว้นแอปที่เข้ากันไม่ได้ออกจากการประมวลผลเสียง</string>
     <string name="app_compat_unknown_pkg_name">แพ็กเกจที่ไม่รู้จัก</string>
     <!-- Root: Library load failure -->

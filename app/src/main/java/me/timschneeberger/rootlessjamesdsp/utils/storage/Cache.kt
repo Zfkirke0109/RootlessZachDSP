@@ -88,13 +88,12 @@ object Cache {
     }
 
     fun cleanupNow(context: Context) {
-        thread {
-            cleanup(
-                context,
-                Pair(RELEASE_DIR, Duration.ZERO),
-                Pair(TEMP_DIR, Duration.ZERO)
-            )
-        }
+        thread { cleanupOwnedNow(context) }
+    }
+
+    fun cleanupOwnedNow(context: Context) {
+        // Caller owns the background worker; completion is required before opening the logger.
+        cleanup(context, Pair(RELEASE_DIR, Duration.ZERO), Pair(TEMP_DIR, Duration.ZERO))
     }
 
     fun cleanup(context: Context) {
@@ -110,16 +109,7 @@ object Cache {
     private fun cleanup(context: Context, vararg dirHours: Pair<String, Duration>) {
         Timber.i("cleaning up")
 
-        val knownNames = dirHours.asSequence().map { it.first }.toSet()
-        val files = context.cacheDir.listFiles().orEmpty()
-        files.asSequence().filter { it.name !in knownNames }.forEach {
-            if (it.isDirectory) {
-                cleanupDir(it, Duration.ZERO)
-                it.delete()
-            } else {
-                it.delete()
-            }
-        }
+        // Only sweep directories owned by Cache. Logs and codec staging have separate lifetimes.
         dirHours.forEach { (name, duration) ->
             val file = File(context.cacheDir, name)
             if (file.exists()) {
