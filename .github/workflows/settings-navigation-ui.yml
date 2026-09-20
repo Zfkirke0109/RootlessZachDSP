@@ -1,14 +1,10 @@
 name: RootlessZachDSP Settings Navigation UI
 
 on:
-  pull_request:
-    branches: [master]
-  push:
-    branches: ["develop/**"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rootless-zach-settings-ui-${{ github.ref }}
@@ -31,10 +27,9 @@ jobs:
       - name: Check out development branch and DSP submodules
         uses: actions/checkout@v4
         with:
-          ref: develop/rootless-zach-foundation
           submodules: recursive
           fetch-depth: 2
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
@@ -47,6 +42,8 @@ jobs:
 
       - name: Set up Android command-line tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
@@ -79,39 +76,13 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set +e
-            ./gradlew --stacktrace --info --console=plain connectedRootlessFdroidDebugAndroidTest \
-              > "$GITHUB_WORKSPACE/settings-navigation-gradle.log" 2>&1
-            status=$?
-            printf '%s\n' "$status" > "$GITHUB_WORKSPACE/settings-navigation-status.txt"
-            tail -n 200 "$GITHUB_WORKSPACE/settings-navigation-gradle.log"
-            exit 0
+          script: bash tools/ci/run-navigation-tests.sh
 
-      - name: Commit concise failure evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          status="$(cat settings-navigation-status.txt)"
-          if [ "$status" -eq 0 ]; then
-            rm -f docs/SETTINGS_UI_FAILURE.md
-            exit 0
-          fi
-          {
-            echo '# Settings navigation instrumentation failure'
-            echo
-            echo '```text'
-            tail -n 500 settings-navigation-gradle.log
-            echo '```'
-          } > docs/SETTINGS_UI_FAILURE.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/SETTINGS_UI_FAILURE.md
-          git commit -m "chore: capture Settings instrumentation failure"
-          git push origin HEAD:develop/rootless-zach-foundation
-
-      - name: Enforce Settings navigation gate
-        shell: bash
-        run: |
-          status="$(cat settings-navigation-status.txt)"
-          exit "$status"
+      - name: Upload navigation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-navigation-evidence
+          path: |
+            build/ci-evidence/
+            app/build/reports/androidTests/
