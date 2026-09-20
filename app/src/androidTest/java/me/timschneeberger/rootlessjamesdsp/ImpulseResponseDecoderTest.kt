@@ -2,6 +2,8 @@ package me.timschneeberger.rootlessjamesdsp
 
 import androidx.test.platform.app.InstrumentationRegistry
 import me.timschneeberger.rootlessjamesdsp.interop.JdspImpResToolbox
+import me.timschneeberger.rootlessjamesdsp.interop.JamesDspLocalEngine
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -16,6 +18,15 @@ class ImpulseResponseDecoderTest {
             putShort(2); putShort(16); put("data".toByteArray()); putInt(frames * 2)
             repeat(frames) { putShort(if (it == 0) 16000 else 0) }
         }.array()
+
+    @Test fun directPlayerConvolverDoesNotOverwriteCaptureDiagnostics() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        CaptureSessionStatus.convolver("CAPTURE_SENTINEL")
+        JamesDspLocalEngine(context, publishRootlessDiagnostics = false).use { engine ->
+            assertTrue(engine.setConvolver(false, "", 0, ""))
+            assertTrue(CaptureSessionStatus.summary().contains("convolver=CAPTURE_SENTINEL"))
+        }
+    }
 
     @Test fun emptyAndMalformedFilesNeverReachOptimization() {
         val dir = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir

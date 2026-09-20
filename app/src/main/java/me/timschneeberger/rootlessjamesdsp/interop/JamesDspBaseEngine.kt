@@ -1,6 +1,5 @@
 package me.timschneeberger.rootlessjamesdsp.interop
 
-import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import android.content.Context
 import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
@@ -212,16 +211,18 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         } ?: false
     }
 
+    protected open fun reportConvolverStatus(state: String) = Unit
+
     fun setConvolver(enable: Boolean, impulseResponsePath: String, optimizationMode: Int, waveEditStr: String): Boolean
     {
         if (!enable) {
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            CaptureSessionStatus.convolver("DISABLED")
+            reportConvolverStatus("DISABLED")
             return true
         }
         if (impulseResponsePath.isBlank()) {
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            CaptureSessionStatus.convolver("MISSING_IR")
+            reportConvolverStatus("MISSING_IR")
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Missing)
             return false
         }
@@ -230,7 +231,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
         if(!File(path).isFile || !File(path).canRead()) {
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            CaptureSessionStatus.convolver("MISSING_IR")
+            reportConvolverStatus("MISSING_IR")
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Missing)
             return false
         }
@@ -266,7 +267,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
         )
 
         if(imp == null) {
-            CaptureSessionStatus.convolver("INVALID_IR")
+            reportConvolverStatus("INVALID_IR")
             Timber.e("setConvolver: Failed to read IR")
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Corrupted)
@@ -275,7 +276,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
         // check frame count
         if(info[1] <= 0) {
-            CaptureSessionStatus.convolver("EMPTY_IR")
+            reportConvolverStatus("EMPTY_IR")
             Timber.e("setConvolver: IR has no frames")
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.NoFrames)
@@ -290,12 +291,12 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
 
         if (!ImpulseResponseValidation.valid(imp, info[0], info[1])) {
             setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            CaptureSessionStatus.convolver("INVALID_IR_DIMENSIONS_OR_SAMPLES")
+            reportConvolverStatus("INVALID_IR_DIMENSIONS_OR_SAMPLES")
             callbacks?.onConvolverParseError(ProcessorMessage.ConvolverErrorCode.Corrupted)
             return false
         }
         val applied = setConvolverInternal(true, imp, info[0], info[1], info[2])
-        CaptureSessionStatus.convolver(if (applied) "APPLIED" else "NATIVE_LOAD_FAILED")
+        reportConvolverStatus(if (applied) "APPLIED" else "NATIVE_LOAD_FAILED")
         if (!applied) setConvolverInternal(false, FloatArray(0), 0, 0, 0)
         return applied
     }

@@ -113,6 +113,7 @@ jobs:
             fi
             sha256sum "$apk" >> "$VERIFY_DIR/SHA256SUMS.txt"
           done
+          cat "$VERIFY_DIR/SHA256SUMS.txt"
 
       - name: Run lint and preserve report
         id: lint

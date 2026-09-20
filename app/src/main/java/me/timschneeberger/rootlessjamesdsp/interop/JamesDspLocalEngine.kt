@@ -1,5 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.interop
 
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import android.content.Context
 import android.content.Intent
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
@@ -59,6 +60,10 @@ class JamesDspLocalEngine(
             JamesDspWrapper.free(oldHandle)
             Timber.d("Handle $oldHandle has been freed")
         }
+    }
+
+    override fun reportConvolverStatus(state: String) {
+        if (BuildConfig.ROOTLESS && publishRootlessDiagnostics) CaptureSessionStatus.convolver(state)
     }
 
     // Processing

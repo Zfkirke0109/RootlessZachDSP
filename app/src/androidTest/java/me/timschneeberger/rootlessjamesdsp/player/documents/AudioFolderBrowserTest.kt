@@ -1,14 +1,16 @@
 package me.timschneeberger.rootlessjamesdsp.player.documents
 
 import android.database.MatrixCursor
+import android.view.View
+import android.view.ViewGroup
+import android.view.inspector.WindowInspector
+import android.widget.TextView
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.platform.app.InstrumentationRegistry
 import me.timschneeberger.rootlessjamesdsp.R
@@ -85,12 +87,21 @@ class AudioFolderBrowserTest {
 
     private fun awaitText(text: String) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (true) {
-            try { onView(withText(text)).check(matches(isDisplayed())); return }
-            catch (error: androidx.test.espresso.NoMatchingViewException) {
-                if (System.nanoTime() >= deadline) throw error
-                Thread.sleep(25)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        while (System.nanoTime() < deadline) {
+            var visible = false
+            instrumentation.runOnMainSync {
+                visible = WindowInspector.getGlobalWindowViews().any { containsText(it, text) }
             }
+            if (visible) return
+            Thread.sleep(25)
         }
+        fail("Timed out waiting for folder entry: $text")
+    }
+
+    private fun containsText(view: View, text: String): Boolean {
+        if (!view.isShown) return false
+        if (view is TextView && view.text.toString() == text) return true
+        return view is ViewGroup && (0 until view.childCount).any { containsText(view.getChildAt(it), text) }
     }
 }
