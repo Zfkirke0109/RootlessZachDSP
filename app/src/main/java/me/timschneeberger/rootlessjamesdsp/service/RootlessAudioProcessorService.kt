@@ -40,6 +40,7 @@ import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.LinearRamp
 import me.timschneeberger.rootlessjamesdsp.audio.transport.WetDryCrossfader
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
 import me.timschneeberger.rootlessjamesdsp.flavor.CrashlyticsImpl
 import me.timschneeberger.rootlessjamesdsp.interop.JamesDspLocalEngine
@@ -153,6 +154,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
 
     override fun onCreate() {
         super.onCreate()
+        CaptureSessionStatus.started()
 
         // Routing/profile management is not initialised during Application.onCreate any more,
         // because a headless bind does not need MediaRouter. Processing is about to start here,
@@ -263,6 +265,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
         sessionManager.sessionPolicyDatabase.unregisterOnRestrictedSessionChangeListener(onSessionPolicyChangeListener)
         sessionManager.sessionDatabase.unregisterOnSessionChangeListener(onSessionChangeListener)
         sessionManager.destroy()
+        CaptureSessionStatus.stopped()
         capturePolicyStore.unregisterListener(capturePolicyListener)
         preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
         notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
@@ -338,6 +341,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
     private val onSessionChangeListener = object : OnRootlessSessionChangeListener {
         override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {
             isProcessorIdle = sessionList.isEmpty()
+            CaptureSessionStatus.sessionsChanged(sessionList.size)
             if (!isProcessorIdle) sessionLossRetryCount = 0
             Timber.d("onSessionChanged: isProcessorIdle=$isProcessorIdle")
             ServiceNotificationHelper.pushServiceNotification(
@@ -571,7 +575,7 @@ class RootlessAudioProcessorService : BaseAudioProcessorService() {
                     recoveryGain.setImmediate(0f)
                     recoveryGain.rampTo(1f, crossfadeSamples)
                     Timber.i(
-                        "RootlessZach recovery completed: reason=%s bufferSamples=%d attempt=%d",
+                        "RootlessZach pipeline rebuild completed: reason=%s bufferSamples=%d attempt=%d",
                         reason,
                         pipeline.bufferSamples,
                         attempt + 1,

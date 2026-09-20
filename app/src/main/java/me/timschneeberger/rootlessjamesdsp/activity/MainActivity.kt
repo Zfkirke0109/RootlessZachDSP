@@ -646,6 +646,8 @@ class MainActivity : BaseActivity() {
                     when(ProcessorMessage.ConvolverErrorCode.fromInt(
                         intent.getIntExtra(ProcessorMessage.Param.ConvolverErrorCode.name, 0)
                     )) {
+                        ProcessorMessage.ConvolverErrorCode.Missing -> R.string.message_irs_missing
+                        ProcessorMessage.ConvolverErrorCode.NoFrames -> R.string.message_irs_empty
                         ProcessorMessage.ConvolverErrorCode.Corrupted -> R.string.message_irs_corrupt
                         ProcessorMessage.ConvolverErrorCode.AdvParamsInvalid -> R.string.message_convolver_advimp_invalid
                         else -> null

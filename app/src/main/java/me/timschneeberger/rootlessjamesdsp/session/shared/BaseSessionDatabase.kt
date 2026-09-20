@@ -30,7 +30,9 @@ abstract class BaseSessionDatabase(protected val context: Context) {
 
     fun clearSessions(){
         sessionList.forEach { (_, session) -> onSessionRemoved(session) }
+        val changed = sessionList.isNotEmpty()
         sessionList.clear()
+        if (changed) changeCallbacks.forEach { it.onSessionChanged(sessionList) }
     }
 
     fun update(dump: ISessionInfoDump)

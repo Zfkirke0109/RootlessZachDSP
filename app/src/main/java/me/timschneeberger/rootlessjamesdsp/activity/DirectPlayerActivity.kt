@@ -47,6 +47,7 @@ import me.timschneeberger.rootlessjamesdsp.audio.lossless.LosslessPcmMetadata
 import me.timschneeberger.rootlessjamesdsp.audio.lossless.LosslessPcmSource
 import me.timschneeberger.rootlessjamesdsp.player.codec.flac.FlacPcmSource
 import me.timschneeberger.rootlessjamesdsp.player.codec.wavpack.WavPackPcmSource
+import me.timschneeberger.rootlessjamesdsp.player.documents.AudioFolderBrowser
 import java.util.Locale
 
 /** Source-owning player. It is separate from playback capture and the system-wide DSP service. */
@@ -61,6 +62,9 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
     private lateinit var artworkView: ImageView
     private lateinit var playButton: Button
     private lateinit var correctionButton: Button
+    private lateinit var correctionFolderButton: Button
+    private val folderBrowser by lazy { AudioFolderBrowser(this) }
+    private var choosingCorrectionFolder = false
     private lateinit var modeStatusText: TextView
 
     private var selectedUri: Uri? = null
@@ -93,6 +97,21 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
             selectedUri?.let { loadSource(it, resetCorrection = false) }
         }
 
+    private val openFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri ?: return@registerForActivityResult
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val correction = choosingCorrectionFolder
+        val expectedSource = selectedUri
+        folderBrowser.open(uri, correction) { document ->
+            if (correction) {
+                if (expectedSource != null && expectedSource == selectedUri) {
+                    correctionUri = document
+                    loadSource(expectedSource, resetCorrection = false)
+                }
+            } else loadSource(document, resetCorrection = true)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = getString(R.string.direct_player_title)
@@ -117,6 +136,7 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
 
     override fun onDestroy() {
         playbackGeneration++
+        folderBrowser.close()
         stopCustomPlayback()
         ordinaryPlayer.removeListener(this)
         ordinaryPlayer.release()
@@ -190,6 +210,16 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
                 )
             }
         })
+        content.addView(Button(this).apply {
+            text = getString(R.string.direct_player_folder_audio)
+            setOnClickListener { choosingCorrectionFolder = false; openFolder.launch(null) }
+        })
+        correctionFolderButton = Button(this).apply {
+            text = getString(R.string.direct_player_folder_correction)
+            isVisible = false
+            setOnClickListener { choosingCorrectionFolder = true; openFolder.launch(null) }
+        }
+        content.addView(correctionFolderButton)
         correctionButton = Button(this).apply {
             text = getString(R.string.direct_player_choose_wvc)
             isVisible = false
@@ -306,6 +336,7 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
         usbText.setText(R.string.direct_player_usb_not_evaluated)
         playButton.isEnabled = false
         correctionButton.isEnabled = false
+        correctionFolderButton.isEnabled = false
         artworkView.isVisible = false
         val expectedCorrection = correctionUri
 
@@ -319,6 +350,8 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
                 inspection = result.inspection
                 losslessMetadata = result.losslessMetadata
                 correctionButton.isVisible = result.kind == SourceKind.WAVPACK
+                correctionFolderButton.isVisible = result.kind == SourceKind.WAVPACK
+                correctionFolderButton.isEnabled = true
                 correctionButton.isEnabled = true
                 correctionButton.text = getString(
                     if (correctionUri == null) {
@@ -939,6 +972,7 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
         mqaText.text = getString(R.string.direct_player_mqa_unavailable)
         artworkView.isVisible = false
         correctionButton.isVisible = false
+        correctionFolderButton.isVisible = false
         playButton.isEnabled = false
         if (::modeStatusText.isInitialized) renderModeStatus()
     }

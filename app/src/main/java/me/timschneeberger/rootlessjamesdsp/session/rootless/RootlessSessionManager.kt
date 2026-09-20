@@ -21,14 +21,19 @@ class RootlessSessionManager(context: Context) : BaseSessionManager(context)
         sessionPolicyDatabase.destroy()
     }
 
-    override fun handleSessionDump(sessionDump: ISessionInfoDump?) {
-        if(sessionDump is ISessionPolicyInfoDump) {
-            sessionPolicyDatabase.update(sessionDump)
-        }
-        else {
-            dumpManager.dumpCaptureAllowlistLog()?.let { sessionPolicyDatabase.update(it) }
-        }
+    override fun collectSnapshot(): PollSnapshot {
+        val sessions = dumpManager.dumpSessions()
+        val policies = sessions as? ISessionPolicyInfoDump ?: dumpManager.dumpCaptureAllowlistLog()
+        return PollSnapshot(sessions, policies)
+    }
 
+    override fun applySnapshot(snapshot: PollSnapshot) {
+        snapshot.policies?.let { sessionPolicyDatabase.update(it) }
+        handleSessionDump(snapshot.sessions)
+    }
+
+    override fun handleSessionDump(sessionDump: ISessionInfoDump?) {
+        // An unavailable query cannot prove that an existing session disappeared.
         sessionDump?.let { sessionDatabase.update(it) }
     }
 

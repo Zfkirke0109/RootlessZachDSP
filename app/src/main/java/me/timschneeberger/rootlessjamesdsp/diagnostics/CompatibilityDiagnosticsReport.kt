@@ -81,6 +81,9 @@ object CompatibilityDiagnosticsReport {
                 appendLine("selectedRawUids=<redacted>")
             }
             appendLine()
+            appendLine("[Capture session state]")
+            appendLine(CaptureSessionStatus.summary())
+            appendLine()
             appendLine("[Audio platform]")
             appendLine(
                 "outputSampleRate=" +

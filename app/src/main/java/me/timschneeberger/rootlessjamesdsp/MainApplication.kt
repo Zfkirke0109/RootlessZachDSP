@@ -132,11 +132,9 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         // while the device is still starved for CPU shortly after boot.
         thread(name = "startup-housekeeping", isDaemon = true) {
             try {
-                // Ordered deliberately. The cache sweep deletes every cacheDir entry outside its
-                // own known directories, so it has to finish before the log file is opened below
-                // — previously it ran on its own thread and could delete application.log moments
-                // after FileLoggerTree created it.
-                Cache.cleanupNow(this@MainApplication)
+                // Await this sweep on the housekeeping worker. Cache cleans only its own
+                // directories; the logger and codec stager own their separate lifetimes.
+                Cache.cleanupOwnedNow(this@MainApplication)
                 SeekableDocumentStager.removeStaleFiles(cacheDir)
 
                 val dumpFile = File(filesDir, "dump.txt")

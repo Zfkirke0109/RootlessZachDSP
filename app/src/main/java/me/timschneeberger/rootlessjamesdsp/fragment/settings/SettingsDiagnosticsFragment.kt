@@ -10,6 +10,7 @@ import androidx.preference.Preference
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import me.timschneeberger.rootlessjamesdsp.diagnostics.CompatibilityDiagnosticsReport
 import me.timschneeberger.rootlessjamesdsp.diagnostics.DiagnosticsLeakScanner
 import me.timschneeberger.rootlessjamesdsp.diagnostics.RootlessZachDiagnostics
@@ -74,11 +75,12 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
             } else {
                 buildString {
                     append(transport.compactString())
+                    append("\n").append(CaptureSessionStatus.summary())
                     if (engineSignal != null) {
                         append("\ndspEngineSamples=").append(engineSignal.sampleCount)
                         append(" dspEngineOutputChanged=").append(engineSignal.outputChanged)
                         append(" changedRatio=").append(engineSignal.changedSampleRatio)
-                        append(" dryInputRms=").append(engineSignal.inputRms)
+                        append(" capturedInputRms=").append(engineSignal.inputRms)
                         append(" dspEngineOutputRms=").append(engineSignal.outputRms)
                     } else {
                         append("\ndspEngineSignal=not-connected-yet")
