@@ -30,10 +30,13 @@ target_include_directories(
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/libjdspimptoolbox)
 
-# WavPack 5.9.0 is fetched from an immutable upstream commit. Only the decoder library is
-# built; command-line programs, install rules, DSD conversion, worker threads, and assembly
-# are intentionally disabled for the small Android JNI surface below.
-include(FetchContent)
+# WavPack 5.9.0 (upstream commit 5803634a030e2a11dba602ba057b89cc34486c67) is a checked-in git
+# submodule, so a clean configuration never needs network access: offline and reproducible
+# source builds such as the fdroid variant work from the checkout alone. Only the decoder
+# library is built; command-line programs, install rules, DSD conversion, worker threads, and
+# assembly are intentionally disabled for the small Android JNI surface below. Fetching the
+# same pinned commit over the network remains only as a fallback for checkouts that skipped
+# submodule initialisation.
 set(WAVPACK_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(WAVPACK_INSTALL_CMAKE_MODULE OFF CACHE BOOL "" FORCE)
 set(WAVPACK_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
@@ -43,13 +46,23 @@ set(WAVPACK_ENABLE_THREADS OFF CACHE BOOL "" FORCE)
 set(WAVPACK_ENABLE_ASM OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        wavpack_upstream
-        GIT_REPOSITORY https://github.com/dbry/WavPack.git
-        GIT_TAG 5803634a030e2a11dba602ba057b89cc34486c67
-        GIT_SHALLOW FALSE
-        GIT_SUBMODULES "")
-FetchContent_MakeAvailable(wavpack_upstream)
+set(WAVPACK_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/wavpack")
+if(EXISTS "${WAVPACK_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory("${WAVPACK_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/wavpack")
+else()
+    message(WARNING
+            "WavPack submodule is not checked out at ${WAVPACK_SOURCE_DIR}; fetching the pinned "
+            "upstream commit over the network. Run 'git submodule update --init --recursive' "
+            "for an offline build.")
+    include(FetchContent)
+    FetchContent_Declare(
+            wavpack_upstream
+            GIT_REPOSITORY https://github.com/dbry/WavPack.git
+            GIT_TAG 5803634a030e2a11dba602ba057b89cc34486c67
+            GIT_SHALLOW FALSE
+            GIT_SUBMODULES "")
+    FetchContent_MakeAvailable(wavpack_upstream)
+endif()
 
 add_library(
         wavpack-decoder

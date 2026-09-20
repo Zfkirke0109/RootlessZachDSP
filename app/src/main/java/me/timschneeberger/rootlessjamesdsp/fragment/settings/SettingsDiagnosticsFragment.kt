@@ -6,8 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
@@ -180,14 +184,27 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.rootless_zach_diagnostics_clear_title)
             .setMessage(R.string.rootless_zach_diagnostics_clear_confirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                RootlessZachDiagnostics.clearHistory()
+            .setPositiveButton(android.R.string.ok) { _, _ -> clearHistory() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun clearHistory() {
+        val pending = RootlessZachDiagnostics.clearHistory()
+        // Report success only once the writer thread has actually deleted the files, so an
+        // immediate export cannot still contain the records the user just cleared.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val cleared = withContext(Dispatchers.IO) {
+                runCatching { pending.get() }.getOrDefault(false)
+            }
+            if (cleared) {
                 findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
                     getString(R.string.rootless_zach_diagnostics_cleared)
                 requireContext().toast(R.string.rootless_zach_diagnostics_cleared)
+            } else {
+                requireContext().toast(R.string.rootless_zach_diagnostics_clear_failed)
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
     }
 
     private fun buildRedactedBundle(): String {

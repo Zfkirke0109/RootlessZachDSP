@@ -3,8 +3,13 @@ package me.timschneeberger.rootlessjamesdsp.activity
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.View
@@ -82,6 +87,12 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
     private var startingPlayback = false
     private var loadGeneration = 0
     private var playbackGeneration = 0
+    private val audioManager by lazy { getSystemService(AudioManager::class.java) }
+    private var customFocusRequest: AudioFocusRequest? = null
+    private var resumeCustomPlaybackOnFocusGain = false
+    private val customFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        handleCustomFocusChange(change)
+    }
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { loadSource(it, resetCorrection = true) }
@@ -482,6 +493,14 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
             return
         }
         if (activePath == ResolvedPlaybackPath.ORDINARY_ANDROID_PLAYBACK) {
+            when (ordinaryPlayer.playbackState) {
+                // An ended player does not restart on play(); rewind so the track can be replayed.
+                Player.STATE_ENDED -> ordinaryPlayer.seekToDefaultPosition()
+                // A failed player sits idle with its media item retained; prepare it again.
+                Player.STATE_IDLE -> ordinaryPlayer.prepare()
+                // Buffering or ready players resume from their current position.
+                else -> Unit
+            }
             ordinaryPlayer.play()
             return
         }
@@ -523,7 +542,21 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
                     }
                     startLosslessPath(source)
                 }.onFailure { error ->
-                    if (stillCurrent) {
+                    if (!stillCurrent) return@onFailure
+                    // A decoder that inspected fine but cannot be reopened follows the same policy
+                    // as a runtime engine failure: only Automatic mode downgrades to ordinary
+                    // playback, and WavPack has no ordinary Android decoder to fall back to.
+                    val shouldFallback = DirectPlayerFallbackPolicy.shouldUseOrdinaryPlaybackAfterFailure(
+                        requestedMode = requestedMode,
+                        ordinaryPlaybackSupported = expectedKind != SourceKind.WAVPACK,
+                        hasSelectedSource = selectedUri != null,
+                    )
+                    if (shouldFallback) {
+                        startOrdinaryPlayback(
+                            "Automatic mode selected ordinary Android playback because the native decoder " +
+                                "could not be reopened: ${error.message ?: error.javaClass.simpleName}",
+                        )
+                    } else {
                         showPlaybackFailure(error)
                     }
                 }
@@ -636,6 +669,10 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
             showUsbRejection(preparation)
             return
         }
+        if (!requestCustomPlaybackFocus()) {
+            showPlaybackFailure(IllegalStateException(AUDIO_FOCUS_DENIED))
+            return
+        }
         activePath = ResolvedPlaybackPath.ANDROID_BIT_PERFECT_DIRECT
         directRouteConfirmed = false
         renderDirectPreparation(preparation, format, "PCM/WAV extractor")
@@ -670,6 +707,11 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
             return
         }
         ordinaryPlayer.stop()
+        if (!requestCustomPlaybackFocus()) {
+            source.close()
+            showPlaybackFailure(IllegalStateException(AUDIO_FOCUS_DENIED))
+            return
+        }
         activePath = ResolvedPlaybackPath.ANDROID_BIT_PERFECT_DIRECT
         directRouteConfirmed = false
         renderDirectPreparation(preparation, format, source.metadata.codec.name)
@@ -700,6 +742,11 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
             return
         }
         ordinaryPlayer.stop()
+        if (!requestCustomPlaybackFocus()) {
+            source.close()
+            showPlaybackFailure(IllegalStateException(AUDIO_FOCUS_DENIED))
+            return
+        }
         activePath = ResolvedPlaybackPath.ROOTLESS_JAMES_DSP
         usbText.setText(R.string.direct_player_enhanced_usb_status)
         val generation = ++playbackGeneration
@@ -936,6 +983,7 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
         raw?.close()
         decoded?.close()
         enhanced?.close()
+        abandonCustomPlaybackFocus()
         if (activePath != ResolvedPlaybackPath.ORDINARY_ANDROID_PLAYBACK) activePath = null
         if (::playButton.isInitialized) {
             playButton.text = getString(R.string.direct_player_play)
@@ -944,6 +992,70 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
 
     private fun hasCustomPlayback(): Boolean =
         directPcmEngine != null || decodedLosslessEngine != null || enhancedLosslessEngine != null
+
+    /**
+     * The custom engines write to AudioTrack directly, so unlike the Media3 path nothing requests
+     * audio focus on their behalf. Without it they play over other media apps and keep going
+     * through calls. Focus is held from engine start until [stopCustomPlayback].
+     */
+    private fun requestCustomPlaybackFocus(): Boolean {
+        if (customFocusRequest != null) return true
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            // Bit-perfect output cannot duck without altering samples, so every custom path pauses.
+            .setWillPauseWhenDucked(true)
+            .setOnAudioFocusChangeListener(customFocusListener, Handler(Looper.getMainLooper()))
+            .build()
+        val granted = audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        if (granted) customFocusRequest = request
+        return granted
+    }
+
+    private fun abandonCustomPlaybackFocus() {
+        val request = customFocusRequest ?: return
+        customFocusRequest = null
+        resumeCustomPlaybackOnFocusGain = false
+        audioManager.abandonAudioFocusRequest(request)
+    }
+
+    private fun handleCustomFocusChange(change: Int) {
+        if (!hasCustomPlayback()) return
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                stopCustomPlayback()
+                startingPlayback = false
+                playButton.isEnabled = selectedUri != null
+                playbackText.setText(R.string.direct_player_focus_lost)
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
+            -> {
+                resumeCustomPlaybackOnFocusGain = !isCustomPlaybackPaused()
+                setCustomPlaybackPaused(true)
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (resumeCustomPlaybackOnFocusGain) setCustomPlaybackPaused(false)
+                resumeCustomPlaybackOnFocusGain = false
+            }
+        }
+    }
+
+    private fun isCustomPlaybackPaused(): Boolean =
+        directPcmEngine?.isPaused()
+            ?: decodedLosslessEngine?.isPaused()
+            ?: enhancedLosslessEngine?.isPaused()
+            ?: false
+
+    private fun setCustomPlaybackPaused(paused: Boolean) {
+        directPcmEngine?.setPaused(paused)
+        decodedLosslessEngine?.setPaused(paused)
+        enhancedLosslessEngine?.setPaused(paused)
+    }
 
     private fun renderModeStatus() {
         if (!::modeStatusText.isInitialized) return
@@ -1035,5 +1147,6 @@ class DirectPlayerActivity : BaseActivity(), Player.Listener {
 
     companion object {
         private const val MAX_ARTWORK_EDGE = 1_024
+        private const val AUDIO_FOCUS_DENIED = "Android denied audio focus for the Direct Player"
     }
 }

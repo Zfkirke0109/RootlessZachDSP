@@ -22,3 +22,6 @@ local.properties
 # Captured device diagnostics (logcat, dumpsys, bugreports). These contain
 # device-wide and app-usage information and must never be committed or shared.
 /diagnostics/
+
+# Kotlin compiler session files (created under buildSrc/ as well as the root project)
+**/.kotlin/

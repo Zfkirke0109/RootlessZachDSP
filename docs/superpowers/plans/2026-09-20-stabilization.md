@@ -17,6 +17,6 @@ Review focus: cancellation while a provider is blocked; no session fallback to s
 
 ## Copilot review remediation
 
-- Initialize service-notification channels in the shared builder so legacy/root and rootless paths are covered. Add a fresh-install emulator regression for the legacy path.
+- Initialize service-notification channels in the shared builder so legacy/root and rootless paths are covered. The emulator regression for the legacy path deletes and recreates the channel itself: the emulator delivers BOOT_COMPLETED to the freshly started test process, and the boot receiver's permission prompt already declares every channel, so a fresh-install precondition never holds there.
 - Replace the remaining old product name in the Turkish compatibility instruction.
 - Keep this plan aligned with the review-requested state. Review remediation is authorized; merge/release and physical-device acceptance remain separate gates.

@@ -6,7 +6,9 @@ import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioSignalTelemetry
 import me.timschneeberger.rootlessjamesdsp.audio.transport.AudioTransportTelemetry
 import timber.log.Timber
 import java.io.File
+import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -94,16 +96,25 @@ object RootlessZachDiagnostics {
         trackInputSignalSnapshot.set(null)
     }
 
-    fun clearHistory() {
+    /**
+     * Deletes the persisted history on the writer thread.
+     *
+     * The returned future completes only once the store has actually been cleared; its value is
+     * false when deletion failed. Callers must wait for it off the main thread before reporting
+     * success, because [readRecentLines] still returns the old records until then.
+     */
+    fun clearHistory(): Future<Boolean> {
         clear()
-        writer.execute {
-            runCatching { diagnosticsStore()?.clear() }
+        return writer.submit(Callable {
+            val cleared = runCatching { diagnosticsStore()?.clear() }
                 .onFailure { Timber.w(it, "Unable to clear RootlessZach diagnostics history") }
+                .isSuccess
             lastPersistedTransportSnapshot = null
             lastPersistedEngineSignalSnapshot = null
             lastPersistedTrackInputSignalSnapshot = null
             droppedEventCount.set(0L)
-        }
+            cleared
+        })
     }
 
     fun readRecentLines(maximumLines: Int = 200): List<String> =

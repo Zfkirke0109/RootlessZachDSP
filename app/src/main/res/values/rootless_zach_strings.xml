@@ -39,6 +39,7 @@
     <string name="rootless_zach_diagnostics_copied">Diagnostics summary copied.</string>
     <string name="rootless_zach_diagnostics_clear_confirm">Delete all locally stored structured diagnostic events?</string>
     <string name="rootless_zach_diagnostics_cleared">Diagnostic history cleared.</string>
+    <string name="rootless_zach_diagnostics_clear_failed">Diagnostic history could not be cleared.</string>
     <string name="rootless_zach_diagnostics_share">Share redacted bundle</string>
     <string name="rootless_zach_diagnostics_share_title">Share RootlessZachDSP diagnostics</string>
     <string name="rootless_zach_diagnostics_preview_header">Redacted compatibility report and recent technical event records. No raw PCM is stored.</string>

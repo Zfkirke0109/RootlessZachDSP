@@ -34,4 +34,16 @@ class OneTimeInitializer {
             done = true
         }
     }
+
+    /**
+     * Forgets a completed run so the next [runOnce] executes its action again.
+     *
+     * Intended for tests that need to observe the first-use path of a subsystem in a process
+     * that has already initialised it.
+     */
+    fun reset() {
+        synchronized(this) {
+            done = false
+        }
+    }
 }

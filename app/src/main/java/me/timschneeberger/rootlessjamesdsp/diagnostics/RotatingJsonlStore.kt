@@ -68,19 +68,20 @@ class RotatingJsonlStore(
         appendBatch(pending)
     }
 
+    /**
+     * Returns the newest [maximumLines] records in write order.
+     *
+     * The active generation is short right after a rotation, so when it holds fewer lines than
+     * requested the remainder is taken from the end of the retained previous generation.
+     */
     @Synchronized
     fun readRecentLines(maximumLines: Int = 200): List<String> {
         require(maximumLines >= 0) { "maximumLines must not be negative" }
-        if (maximumLines == 0 || !activeFile.exists()) return emptyList()
+        if (maximumLines == 0) return emptyList()
 
-        val ring = ArrayDeque<String>(maximumLines)
-        activeFile.useLines(StandardCharsets.UTF_8) { sequence ->
-            sequence.forEach { line ->
-                if (ring.size == maximumLines) ring.removeFirst()
-                ring.addLast(line)
-            }
-        }
-        return ring.toList()
+        val recent = tailLines(activeFile, maximumLines)
+        if (recent.size == maximumLines) return recent
+        return tailLines(rotatedFile, maximumLines - recent.size) + recent
     }
 
     @Synchronized
@@ -96,6 +97,18 @@ class RotatingJsonlStore(
     fun activeFile(): File = activeFile
 
     fun rotatedFile(): File = rotatedFile
+
+    private fun tailLines(file: File, maximumLines: Int): List<String> {
+        if (maximumLines <= 0 || !file.exists()) return emptyList()
+        val ring = ArrayDeque<String>(maximumLines)
+        file.useLines(StandardCharsets.UTF_8) { sequence ->
+            sequence.forEach { line ->
+                if (ring.size == maximumLines) ring.removeFirst()
+                ring.addLast(line)
+            }
+        }
+        return ring.toList()
+    }
 
     private fun appendBatch(lines: Collection<ByteArray>) {
         if (lines.isEmpty()) return

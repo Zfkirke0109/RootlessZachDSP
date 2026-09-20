@@ -23,6 +23,7 @@
     <string name="direct_player_completed_route_confirmed">Playback completed; selected USB route was confirmed by AudioTrack and preferred mixer attributes were cleared. External verification is still pending.</string>
     <string name="direct_player_completed_route_unconfirmed">Playback completed and preferred mixer attributes were cleared, but AudioTrack did not expose routed-device confirmation.</string>
     <string name="direct_player_error">Playback error: %1$s</string>
+    <string name="direct_player_focus_lost">Playback stopped because another app took audio focus.</string>
     <string name="direct_player_source_error">Unable to inspect source: %1$s</string>
     <string name="direct_player_source_format">%1$d Hz · %2$d channels · %3$s-bit · %4$s\n%5$s</string>
     <string name="direct_player_native_source_format">%1$s\nSource: %2$s · %3$s · %4$d Hz · %5$d significant bits · %6$d channels\nLayout: %7$s\nDecoded container: %8$d-bit integer PCM without ReplayGain\nTags: %9$s\nReplayGain metadata: %10$s\nDecoded transformations: %11$s</string>

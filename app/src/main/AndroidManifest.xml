@@ -21,6 +21,17 @@
 
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
+        <!-- The capture-policy and exclusion lists enumerate installed apps. Android 11+
+             package visibility hides every package not declared here, so launchable apps and
+             audio handlers are requested explicitly instead of QUERY_ALL_PACKAGES. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="audio/*" />
+        </intent>
     </queries>
 
     <application

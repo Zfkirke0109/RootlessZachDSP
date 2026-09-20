@@ -84,6 +84,43 @@ class RotatingJsonlStoreTest {
     }
 
     @Test
+    fun `recent lines continue into the rotated generation after a rotation`() {
+        val directory = Files.createTempDirectory("rzdsp-jsonl-recent").toFile()
+        try {
+            val store = RotatingJsonlStore(
+                directory = directory,
+                maximumActiveBytes = 16,
+                maximumLineBytes = 64,
+            )
+            store.appendLine("{\"a\":1}")
+            store.appendLine("{\"b\":2}")
+            store.appendLine("{\"c\":3}")
+            assertEquals(listOf("{\"c\":3}"), store.activeFile().readLines())
+
+            assertEquals(listOf("{\"c\":3}"), store.readRecentLines(1))
+            assertEquals(listOf("{\"b\":2}", "{\"c\":3}"), store.readRecentLines(2))
+            assertEquals(listOf("{\"a\":1}", "{\"b\":2}", "{\"c\":3}"), store.readRecentLines(10))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `recent lines fall back to the rotated generation when the active file is absent`() {
+        val directory = Files.createTempDirectory("rzdsp-jsonl-rotated-only").toFile()
+        try {
+            val store = RotatingJsonlStore(directory, maximumActiveBytes = 1_024)
+            store.appendLines(listOf("one", "two"))
+            assertTrue(store.activeFile().renameTo(store.rotatedFile()))
+            assertFalse(store.activeFile().exists())
+
+            assertEquals(listOf("one", "two"), store.readRecentLines(5))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `clear removes active and rotated generations`() {
         val directory = Files.createTempDirectory("rzdsp-jsonl").toFile()
         try {
