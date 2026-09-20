@@ -4,7 +4,7 @@ This roadmap begins after the foundation transport work in PR #1. Each milestone
 
 ## September 20 stabilization gate
 
-The active integration is draft PR #12 on `codex/integrated-roadmap-debug-20260721`. Baseline capture-policy, Direct Player and diagnostics work does not complete all expanded acceptance criteria below. Finish fresh CI, then Samsung Android 17 / One UI 9.0 capture, document-provider and USB checks before advancing milestones. See [current handoff](AGENT_HANDOFF.md) and [device checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md). The owner will request GitHub review personally; no merge or release is implied.
+The active integration is PR #12, ready for review, on `codex/integrated-roadmap-debug-20260721`. Baseline capture-policy, Direct Player and diagnostics work does not complete all expanded acceptance criteria below. Finish fresh CI, then Samsung Android 17 / One UI 9.0 capture, document-provider and USB checks before advancing milestones. See [current handoff](AGENT_HANDOFF.md) and [device checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md). The owner authorized GitHub review and remediation of Copilot findings; merge and release remain on hold.
 
 ## Global rules
 

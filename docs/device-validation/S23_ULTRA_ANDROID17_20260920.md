@@ -41,4 +41,4 @@ The startup logging text also differs from the nominal commit identity, so clean
 - Direct Player source type, correction state, requested/resolved mode and USB contract/route evidence.
 - Pass/fail/pending per step, with firmware and output route. Listening results should be identified as subjective.
 
-The owner will personally request GitHub review. Keep the PR draft; no merge, review request, release or hardware acceptance is implied by this checkpoint.
+The owner authorized GitHub review and remediation of Copilot findings. PR #12 is ready for review. Merge and release remain on hold; this checkpoint does not establish hardware acceptance.

@@ -491,7 +491,7 @@
     <string name="app_compat_exclude">Hariç tutulan</string>
     <string name="app_compat_title">Yinelenen sesi önlemek için ses işleme askıya alındı</string>
     <string name="app_compat_explanation">Aşağıdaki uygulama, RootlessZachDSP\'nin ses yönlendirmesi üzerindeki kontrolünü kaybetmesine neden olduğu için desteklenmiyor:</string>
-    <string name="app_compat_instruction">Donanım hızlandırmayı veya Rootless JamesDSP ile çakışabilecek diğer ayarları devre dışı bırakabiliyorsanız lütfen uygulamanın ayarlarını kontrol edin ve \'Yeniden Dene\'ye dokunun.</string>
+    <string name="app_compat_instruction">Donanım hızlandırmayı veya RootlessZachDSP ile çakışabilecek diğer ayarları devre dışı bırakabiliyorsanız lütfen uygulamanın ayarlarını kontrol edin ve \'Yeniden Dene\'ye dokunun.</string>
     <string name="app_compat_instruction_exclude">Alternatif olarak, uyumsuz uygulamayı ses işlemenin dışında tutarak bu sorunu atlamak için \'Hariç Tut\'u seçin.</string>
     <string name="app_compat_unknown_pkg_name">Bilinmeyen paket adı</string>
     <!-- Root: Library load failure -->

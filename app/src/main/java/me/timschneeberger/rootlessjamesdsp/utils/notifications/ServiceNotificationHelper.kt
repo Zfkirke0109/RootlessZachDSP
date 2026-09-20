@@ -78,7 +78,6 @@ object ServiceNotificationHelper: KoinComponent {
     }
 
     fun createServiceNotification(context: Context, sessions: Array<IEffectSession>): Notification {
-        Notifications.ensureChannels(context)
         val apps = sessions.distinct().joinToString(", ") {
             // Rootless uses UIDs primarily internally, while Root has a guaranteed package name
             if(isRootless()) {
@@ -109,33 +108,37 @@ object ServiceNotificationHelper: KoinComponent {
         context: Context,
         title: String,
         message: String
-    ) = NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
-        .setShowWhen(false)
-        .setOnlyAlertOnce(true)
-        .setCategory(Notification.CATEGORY_SERVICE)
-        .setContentTitle(title)
-        .setContentText(message)
-        .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                context,
-                0,
-                Intent(context, MainActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                or Intent.FLAG_ACTIVITY_NEW_TASK
-                    )
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    ): Notification {
+        // Both the legacy/root and rootless entry points must create the channel before posting.
+        Notifications.ensureChannels(context)
+        return NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    or Intent.FLAG_ACTIVITY_NEW_TASK
+                        )
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
-        )
-        .setOngoing(true)
-        .apply {
-            if(isRootless())
-                addAction(createStopAction(context))
-        }
-        .build()
+            .setOngoing(true)
+            .apply {
+                if(isRootless())
+                    addAction(createStopAction(context))
+            }
+            .build()
+    }
 
     fun pushSessionLossNotification(context: Context, mediaProjectionStartIntent: Intent?) {
         Notifications.ensureChannels(context)

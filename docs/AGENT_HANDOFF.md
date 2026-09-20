@@ -1,6 +1,6 @@
 # RootlessZachDSP agent handoff
 
-Status: 2026-09-20. Continue from `codex/integrated-roadmap-debug-20260721`, draft PR #12 against `master`. The owner approved stabilization and will personally request GitHub review. Stop before that review request and merge.
+Status: 2026-09-20. Continue from `codex/integrated-roadmap-debug-20260721`, PR #12 against `master`, ready for review. The owner authorized GitHub review and remediation of Copilot findings. Complete the review fixes and validation; merge and release remain on hold.
 
 ## Current source checkpoint
 
@@ -34,7 +34,7 @@ Regression coverage added: session fallback, query failure versus empty, poll co
 
 1. Complete fresh CI verification and retain the trusted-push APK, checksums and signer evidence.
 2. Run the physical checklist; investigate any remaining idle capture using active playback plus simultaneous session/policy evidence.
-3. Have the owner request GitHub review on PR #12. Address findings before considering merge; do not close stacked PRs just because code overlaps.
+3. Copilot review was requested on PR #12. Address its findings, validate the updated head and obtain follow-up review before considering merge; do not close stacked PRs just because code overlaps.
 4. Audit PR #4's distinct startup/runtime underrun separation for a small follow-up that preserves current baseline/percentile telemetry. PR #5 contains superseded diagnostics work and is not blindly merged.
 5. Resume the 20-feature roadmap after stabilization: capture-policy acceptance and session-scoped DynamicsProcessing design, app/device automation rules, metering and DSP graph milestones. Existing baseline implementations do not mark these expanded criteria complete.
 

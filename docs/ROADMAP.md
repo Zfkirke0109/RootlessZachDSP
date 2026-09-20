@@ -1,16 +1,16 @@
 # RootlessZachDSP roadmap
 
-Status date: 2026-09-20. PR #12 is the active draft integration; master contains the shared signing change. Nothing here implies a release or physical validation of the integrated head.
+Status date: 2026-09-20. PR #12 is the active integration, ready for review; master contains the shared signing change. Nothing here implies a release or physical validation of the integrated head.
 
 ## Current delivery state
 
 | Workstream | Evidence-backed state |
 |---|---|
 | Integration | Master signing commit reconciled into PR #12; stacked draft history retained. |
-| Capture, targeting and telemetry | Implemented in the draft; September log shows idle/zero-frame behavior that still needs active-source investigation. |
+| Capture, targeting and telemetry | Implemented in PR #12; September log shows idle/zero-frame behavior that still needs active-source investigation. |
 | Startup and session lifecycle | Cleanup ownership/order, coalesced IO polling, late-result rejection and session fallback changes implemented; current checks tracked in the PR. |
 | Convolution | Missing/empty/corrupt IR status and decoded-data validation implemented; valid-IR device exercise pending. |
-| Direct Player | FLAC/WavPack, correction-file states, USB negotiation and SAF folder browsing implemented in the draft; Samsung provider and USB hardware proof pending. |
+| Direct Player | FLAC/WavPack, correction-file states, USB negotiation and SAF folder browsing implemented in PR #12; Samsung provider and USB hardware proof pending. |
 | Signing | Shared secret contract reconciled; CI checks persistent certificate for trusted push artifacts. Installed-device certificate still needs comparison. |
 
 ## Active stabilization gate
@@ -18,7 +18,7 @@ Status date: 2026-09-20. PR #12 is the active draft integration; master contains
 1. Complete CI on the integrated source: tests, rootless assembly, root Kotlin compilation, lint, emulator and APK verification.
 2. Retain a trusted-push artifact with package, version, full certificate, alignment and checksum evidence.
 3. Follow the [Android 17 / One UI 9.0 device checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md), including capture, IR, WavPack intake and USB routing.
-4. Stop for the owner to request GitHub review on draft PR #12. No merge or release is authorized by this checkpoint.
+4. Complete the authorized Copilot review remediation on PR #12, validate the updated head and obtain follow-up review. Merge and release remain on hold.
 5. Reconcile distinct PR #4 startup/runtime underrun work in a focused follow-up; preserve the newer baseline/percentile implementation.
 
 ## Open proof gaps

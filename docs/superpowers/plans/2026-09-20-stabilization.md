@@ -1,6 +1,6 @@
 # Approved stabilization continuation
 
-User approved the four recommendations in the September 20 review. Keep PR #12 draft and stop before merging or requesting GitHub review. Execution stays in this session. Hardware claims require physical evidence.
+User approved the four recommendations in the September 20 review, then authorized requesting GitHub review. PR #12 is ready for review; Copilot review was requested and returned three findings. The user has authorized applying those findings and validating the fixes. Continue through review remediation; stop before merge or release unless separately authorized. Hardware claims require physical evidence.
 
 1. Reconcile master into the integrated branch, retaining FOSS build/test/lint gates and the shared signing certificate contract. Run emulator tests from one Bash script; persist exit codes and failure evidence. Trusted push builds use the persistent test signer; PR builds remain test-only. No release/tag is created.
 2. Make startup cache cleanup synchronous on its existing background worker. Preserve active codec staging files. Test real temporary-file cleanup and log creation ordering.
@@ -11,6 +11,12 @@ User approved the four recommendations in the September 20 review. Keep PR #12 d
 7. Embed dirty-tree identity in diagnostics. Refresh roadmap/handoff with exact commit/build results and unresolved physical gates. Preserve PR #4's independent underrun work for an explicit future integration rather than replacing current telemetry.
 8. Run unit tests, lint, both-flavor compilation, APK assembly, signature/package/version/alignment checks, and emulator tests on the integrated head. Review the resulting diff and artifact. Physical Samsung capture, listening, and USB DAC checks remain required when no device is connected.
 
-Acceptance: the draft has reproducible checks and a downloadable signed test APK; source defects above have focused regression coverage; WavPack intake is implemented; no false claim of DSP output, bit-perfect USB, physical validation, or completion of the later 20-feature roadmap. Continue broader milestones after these device acceptance gates.
+Acceptance: the PR has reproducible checks and a downloadable signed test APK; source defects above have focused regression coverage; WavPack intake is implemented; no false claim of DSP output, bit-perfect USB, physical validation, or completion of the later 20-feature roadmap. Continue broader milestones after these device acceptance gates.
 
 Review focus: cancellation while a provider is blocked; no session fallback to self/session zero; active staged files surviving housekeeping; .wv/.wvc documents labeled application/octet-stream; failure evidence retaining the actual Gradle exit status.
+
+## Copilot review remediation
+
+- Initialize service-notification channels in the shared builder so legacy/root and rootless paths are covered. Add a fresh-install emulator regression for the legacy path.
+- Replace the remaining old product name in the Turkish compatibility instruction.
+- Keep this plan aligned with the review-requested state. Review remediation is authorized; merge/release and physical-device acceptance remain separate gates.
