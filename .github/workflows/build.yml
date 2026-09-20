@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [master]
   push:
-    branches: [master, "develop/**", "codex/integrated-roadmap-debug-20260721"]
+    branches: [master, "develop/**"]
     tags: ["v*"]
   workflow_dispatch:
 
