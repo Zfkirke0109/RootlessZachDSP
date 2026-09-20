@@ -22,9 +22,9 @@ class RootlessSessionManager(context: Context) : BaseSessionManager(context)
     }
 
     override fun collectSnapshot(): PollSnapshot {
-        val sessions = dumpManager.dumpSessions()
-        val policies = sessions as? ISessionPolicyInfoDump ?: dumpManager.dumpCaptureAllowlistLog()
-        return PollSnapshot(sessions, policies)
+        val selection = dumpManager.collectSessions()
+        val policies = selection.policies ?: dumpManager.dumpCaptureAllowlistLog()
+        return PollSnapshot(selection, policies)
     }
 
     override fun applySnapshot(snapshot: PollSnapshot) {

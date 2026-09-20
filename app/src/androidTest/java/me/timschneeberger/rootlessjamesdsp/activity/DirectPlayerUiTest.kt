@@ -2,6 +2,7 @@ package me.timschneeberger.rootlessjamesdsp.activity
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -16,7 +17,9 @@ class DirectPlayerUiTest {
     fun directPlayerShowsSourceAndUsbSections() {
         ActivityScenario.launch(DirectPlayerActivity::class.java).use {
             onView(withText(R.string.direct_player_source_section)).check(matches(isDisplayed()))
-            onView(withText(R.string.direct_player_usb_toggle)).check(matches(isDisplayed()))
+            onView(withText(R.string.direct_player_folder_audio)).check(matches(isDisplayed()))
+            onView(withText(R.string.direct_player_mode_direct)).perform(scrollTo()).check(matches(isDisplayed()))
+            onView(withText(R.string.direct_player_usb_section)).perform(scrollTo()).check(matches(isDisplayed()))
         }
     }
 }

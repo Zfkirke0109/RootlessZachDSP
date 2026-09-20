@@ -1,215 +1,41 @@
 # RootlessZachDSP agent handoff
 
-Any coding agent may continue from a normal checkout of `develop/rootless-zach-foundation`. Do not rely on chat history.
+Status: 2026-09-20. Continue from `codex/integrated-roadmap-debug-20260721`, draft PR #12 against `master`. The owner approved stabilization and will personally request GitHub review. Stop before that review request and merge.
 
-## Repository state
+## Current source checkpoint
 
-- Repository: `Zfkirke0109/RootlessZachDSP`
-- Branch: `develop/rootless-zach-foundation`
-- Pull request: #1, open, mergeable, **draft**
-- Base: `master`
-- Last fully CI-verified code head: `9402d249d0f2e111ce0661d30bfaa3ba71182a54`
-- Do not merge without Zach's explicit approval.
+- Repository: `Zfkirke0109/RootlessZachDSP`.
+- Pre-stabilization integrated head: `b00b3efab888b692ab14d33770cab321e876f098`.
+- Master reconciliation: `3ae3593fa65109a91c6ef2fe7f6706d0093eb04d`, with master `3062969f845d843e15b8f89a7dfd6db156637fe2` as a parent.
+- SDK/workflow correction: `c56025d9190c0b9e666654e668111cf32badb212`.
+- Capture/file-intake implementation checkpoint: `6ae807ba199cf98034c3cf61969412a175ada57c`.
+- Current CI results and remaining blockers must be recorded in the PR body. Earlier green July builds are not verification of this September checkpoint.
 
-## Last fully CI-verified checkpoint
+## Stabilization changes
 
-Commit `9402d249d0f2e111ce0661d30bfaa3ba71182a54` completed `RootlessZachDSP Android CI` run `29476851457` (run #136) successfully.
+- Shared signing secrets are reconciled with the feature workflow. Trusted push builds validate the persistent test certificate before and after APK signing. PR artifacts use disposable test signing. Neither establishes compatibility with an installed APK whose certificate has not been obtained.
+- CI runs unit tests, rootless assembly, root Kotlin compilation, APK identity/signature/alignment checks, lint and emulator instrumentation. The emulator invokes one Bash script that preserves Gradle's exit status and captures failure evidence. The obsolete workflow that tested and wrote to a fixed development branch is now manual, read-only and tests the selected ref.
+- Startup housekeeping awaits owned-cache cleanup before opening the logger. Cache no longer sweeps other owners' files, including active codec inputs.
+- Session and policy collection run on IO in a lifecycle-owned, coalesced poller. Method changes discard old results, destruction cancels work, and ordinary dump pipe reads have time and size bounds. Binder transaction setup itself is subject to Android's binder behavior.
+- Fallback selection requires a useful external session rather than a nonempty map containing only self/session zero/irrelevant usage. Query failure remains distinct from an observable empty snapshot. Diagnostics reports query, admission and convolution state without claiming PCM capture.
+- Missing/empty/corrupt impulse responses report failures and disable convolution. Decoded dimensions and finite samples are checked before native upload.
+- Direct Player supports a bounded SAF tree browser for audio and WavPack correction documents, including unknown/octet-stream MIME labels. Existing decoders validate content; filenames are discovery hints.
+- Diagnostic commit identity includes a dirty suffix for tracked working-tree modifications.
 
-That run completed:
+## Evidence and limitations
 
-- deterministic audio-transport and JVM unit tests;
-- installable debug APK builds;
-- APK identity, signature, 16 KiB alignment, and checksum verification;
-- Android lint and report collection;
-- artifact upload.
+The current device target is Android 17 / One UI 9.0, firmware `CP2A.260605.016.S918U1UEU8ZZI8`. See [physical acceptance checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md). There is no connected Samsung phone or USB DAC in this coding environment.
 
-Test-only debug artifact:
+The September log has idle/zero-frame evidence, not a successful capture run. Historical July signal/transport evidence is useful context but cannot certify the new firmware or source. Final Android/Samsung mix and DAC output are unmeasured; no MQA decoding/unfolding is implemented or claimed.
 
-- name: `RootlessZachDSP-debug-test-only-168cb8e8a5faf0785b9813947b508c3f4bb8f848`
-- artifact ID: `8367032751`
-- archive size: `108163599` bytes
-- archive digest: `sha256:42f58ad32f510751823b9e87a70ba35e83a3a574f84a14de51bf7825810ae511`
-- workflow source head: `9402d249d0f2e111ce0661d30bfaa3ba71182a54`
+Regression coverage added: session fallback, query failure versus empty, poll coalescing/cancellation/invalidation, IR dimensions/nonfinite data, extension-based document selection, and cache cleanup ownership/order. Physical document-provider navigation/permission behavior, Samsung lifecycle and USB routing remain acceptance gates.
 
-The signed-release job was skipped, as expected for a pull-request build. This artifact is debug/test-only and does not prove production signing.
+## Master-plan next steps
 
-## Work completed after the original foundation checkpoint
+1. Complete fresh CI verification and retain the trusted-push APK, checksums and signer evidence.
+2. Run the physical checklist; investigate any remaining idle capture using active playback plus simultaneous session/policy evidence.
+3. Have the owner request GitHub review on PR #12. Address findings before considering merge; do not close stacked PRs just because code overlaps.
+4. Audit PR #4's distinct startup/runtime underrun separation for a small follow-up that preserves current baseline/percentile telemetry. PR #5 contains superseded diagnostics work and is not blindly merged.
+5. Resume the 20-feature roadmap after stabilization: capture-policy acceptance and session-scoped DynamicsProcessing design, app/device automation rules, metering and DSP graph milestones. Existing baseline implementations do not mark these expanded criteria complete.
 
-### Settings access
-
-- `689c7c0` moved the existing Settings action from the bottom app bar into the top app bar.
-- `f9804a6` added accessibility text and overflow fallback behavior.
-- `SettingsActivity` and existing preference fragments remain the target; they were not recreated.
-- `3380254`, `406071e`, and `f3de364` add a rootless-only Diagnostics entry under regular Settings with View, Copy, Preview/Export, and Clear actions.
-- `04423ed` adds latest pre/post status fields to the Diagnostics summary when signal telemetry is available.
-- Physical-device confirmation of visibility and navigation is still required.
-
-### Session parser corrections
-
-- `77d1197` recognizes Android 16 / One UI AudioFlinger v30 property metadata such as `mSystemReady=1` and deduplicates exact rows.
-- `fa49690` replaces the one-to-one PID/SID fallback with `PID -> Set<SessionId>` and refuses ambiguous API 29/30 fallback.
-- Sanitized fixture: `app/src/test/resources/session_dump/audio_flinger_v30_pluto_sanitized.txt`.
-- Tests cover v30 parsing/deduplication, v29 compatibility, recognized metadata, multimap preservation, and ambiguous fallback refusal.
-
-### Telemetry and persistent diagnostics
-
-- `2a83408` timestamps recoveries and stops repeating an old recovery reason indefinitely.
-- `7464126` tests fresh versus stale recovery reporting.
-- `9540f88` adds an app-private rotating JSONL store with a 5 MiB active-file default and one rotated generation.
-- `be526f8` adds schema-versioned transport/anomaly JSON encoding.
-- `f7721f1` moves JSON serialization and file writes to a dedicated diagnostics thread.
-- `87de5f1` requests an off-thread flush when recovery, underrun, deadline-miss, I/O-error, or bypass counters increase, while retaining approximately five-second periodic snapshots.
-- `155c0df` adds structured-store status to the redacted compatibility report.
-- `0099f34` and `b66a2f3` add rotation, clearing, normalization, escaping, schema, and event tests.
-
-### Pre/post signal foundation
-
-- `7eaebc4`, `30ebd96`, and `163d0ad` add a no-PCM aggregate pre/post signal accumulator for float and 16-bit PCM.
-- It computes sample count, RMS, peak, DC offset, silence ratio, clipped samples, changed-sample ratio, and session-salted rolling hashes.
-- Recording acquires one lock per audio buffer, not per sample.
-- `357345c`, `eb3547b`, and `52cb530` add schema-versioned `SIGNAL_SNAPSHOT` encoding and persistence support.
-- JVM tests cover identical bypass, changed output, clipping, short PCM, non-finite input handling, reset, and privacy-safe JSON.
-- **Important:** the accumulator and persistence path are implemented and tested, but the live service has not yet been wired to call `recordFloat`/`recordShort` or `publishSignal`. Diagnostics correctly shows `prePostSignal=not-connected-yet` until that integration is made.
-
-### Privacy gate
-
-- `68f553e` redacts output-device names and selected raw UIDs by default in support reports.
-- `5ee7a59` and `d570a8b` add a final leak scanner for content/file URIs, Android/private paths, Windows user paths, secret assignments, device serials, and ADB/network endpoints.
-- `f43ca76` and `9402d24` block clipboard/export sharing when the privacy scan finds a prohibited value and display only categories/counts, not the sensitive value itself.
-
-### Device evidence documentation
-
-- `docs/device-validation/PLUTO_20260715_ANALYSIS.md`
-- `docs/device-validation/AUDIO_DIAGNOSTICS_SCHEMA.md`
-- `docs/FEATURES_20_ROADMAP.md`
-
-The raw Pluto trace is not committed. Only aggregate measurements and sanitized fixture data are in the repository.
-
-## Pluto trace result
-
-Approximate measured result from the 2026-07-15 Galaxy S23 Ultra trace:
-
-- 179 seconds, 172 transport snapshots;
-- 48 kHz stereo;
-- 16,982,016 samples read and written;
-- zero partial reads/writes;
-- zero zero-progress operations;
-- zero I/O errors;
-- zero DSP deadline misses;
-- zero bypass buffers;
-- one recovery caused by app-selection change;
-- two underruns;
-- median DSP time about 7.9 ms, p95 about 29.4 ms, maximum 49.4 ms.
-
-The trace proves stable transport but not yet pre/post DSP signal change.
-
-## Immediate continuation order
-
-1. Confirm the current branch head and CI because this handoff documentation commit follows the verified code checkpoint.
-2. Wire `AudioSignalTelemetry` into `RootlessAudioProcessorService` at the dry-input versus final-mixed-output boundary for both float and 16-bit paths.
-3. Call `RootlessZachDiagnostics.publishSignal(signalTelemetry.snapshot())` only at the existing telemetry boundary, not every buffer.
-4. Start a new signal accumulator/seed and call `RootlessZachDiagnostics.beginEngineEpoch()` for each service/engine lifetime.
-5. Add typed session-set and route/preset/module events.
-6. Add deterministic integration tests proving bypass equality and active-DSP difference.
-7. Add the offline native DSP self-test in a separate measured checkpoint.
-8. Add instrumentation tests for Settings and Diagnostics navigation.
-9. Install the resulting APK on the Galaxy S23 Ultra and validate Settings, Amazon Music session selection, self-session exclusion, AudioFlinger parsing, speaker/Bluetooth/USB routes when available, screen lock, and recovery.
-
-## Important code locations
-
-- Rootless service: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/service/RootlessAudioProcessorService.kt`
-- Transport telemetry: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioTransportTelemetry.kt`
-- Signal telemetry: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/audio/transport/AudioSignalTelemetry.kt`
-- Diagnostics bridge/store writer: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RootlessZachDiagnostics.kt`
-- JSON encoder: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/AudioDiagnosticJson.kt`
-- Rotating store: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/RotatingJsonlStore.kt`
-- Leak scanner: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/DiagnosticsLeakScanner.kt`
-- Diagnostics Settings UI: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/fragment/settings/SettingsDiagnosticsFragment.kt`
-- Compatibility report: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/diagnostics/CompatibilityDiagnosticsReport.kt`
-- Audio service parser: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/session/dump/provider/AudioServiceDumpProvider.kt`
-- AudioFlinger parser: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/session/dump/utils/AudioFlingerServiceDumpUtils.kt`
-- Main UI: `app/src/main/java/me/timschneeberger/rootlessjamesdsp/activity/MainActivity.kt`
-- Main layout: `app/src/main/res/layout/activity_dsp_main.xml`
-
-## Required checks
-
-Run the repository's current CI-equivalent tasks and record exact results. At minimum preserve:
-
-- unit tests;
-- debug APK assembly;
-- APK package/version/signature/alignment/SHA-256 verification;
-- lint;
-- instrumentation tests when a device is available.
-
-Release signing secrets and keystore recovery files must never be committed. PR builds do not prove a production-signed release.
-
-## Privacy constraints
-
-Never commit or export:
-
-- raw audio/PCM;
-- song or notification content;
-- private file paths or content URIs;
-- device serials or ADB endpoints;
-- signing keys, passwords, tokens, or secret values;
-- unredacted package/profile identities in default support bundles;
-- user-customized output-device names without explicit opt-in.
-
-## Completion definition for the current checkpoint
-
-The foundation remains draft until:
-
-- Settings is visibly reachable on the physical phone;
-- normal media sessions are selected correctly;
-- RootlessZachDSP's own sessions are excluded;
-- false duplicate-PID warnings are gone;
-- AudioFlinger v30 parses cleanly;
-- structured diagnostics persist safely on-device;
-- the live service feeds pre/post signal telemetry and proves whether DSP changed the signal;
-- route/background/recovery validation shows no prolonged silence;
-- exported evidence passes privacy review.
-
-## 2026-07-17 physical-device follow-up
-
-- Galaxy S23 Ultra confirmed regular Settings -> Diagnostics access.
-- LeakCanary then found a MediaProjection retention chain keeping a destroyed
-  RootlessAudioProcessorService alive. The next patch uses the application context for
-  MediaProjectionManager, explicitly unregisters and stops MediaProjection, clears handler work,
-  and uses a weak callback.
-- The user-selected galaxy two-slider image is now the launcher artwork.
-- AutoEQ selector includes conservative, explicitly unmeasured local templates for S23 Ultra
-  speakers and 2024–2025 Wrangler 4xe premium audio.
-- Rootless output declares USAGE_MEDIA / CONTENT_TYPE_MUSIC for normal Samsung media and Dolby
-  policy eligibility.
-- MQA decoding, guaranteed bit-perfect output, and a replacement high-resolution Samsung driver are
-  not claimed. These require capability detection, direct-path validation, licensing where
-  applicable, and physical-device proof.
-
-## Diagnostics accuracy follow-up
-
-- Expected policy/settings-driven pipeline rebuilds are classified as RECONFIGURATION rather than
-  RECOVERY.
-- Transport snapshots retain the legacy underrun field while adding service-epoch underrun delta,
-  active-AudioTrack underruns, and track generation.
-- A second allocation-free signal accumulator measures captured input against the final
-  post-crossfade/post-recovery-gain buffer submitted to AudioTrack. It still does not claim to
-  observe Samsung's downstream system mix.
-- Compatibility reports probe public Android 14+ USB mixer capabilities, including whether a
-  connected USB route advertises BIT_PERFECT behavior. Rootless DSP itself remains explicitly
-  non-bit-perfect.
-- Active Samsung/Dolby/third-party effect state cannot be reliably enumerated through public APIs,
-  so reports warn about the unobservable pre/post system effect chain instead of guessing.
-
-
-## 2026-07-17 real-time audio optimization branch
-
-- Branch: `perf/realtime-audio-diagnostics`
-- Parent foundation head: `8f0b9fd520584ae091e21e6976d43ad167dc07e3`
-- PR #1 remains draft and unmerged.
-- Scope: HAL-burst-aligned adaptive buffering, representative signal telemetry, bounded/coalesced
-  background publication, lock-free single-writer transport counters, and buffered JSONL batches.
-- Required CI: `testRootlessFdroidDebugUnitTest`, `lintRootlessFdroidDebug`,
-  `assembleRootlessFdroidDebug`, package/signature/16 KiB alignment verification, and SHA-256.
-- Physical status: blocked on installation and testing on the Galaxy S23 Ultra.
-- Next checkpoint after device evidence: startup-priming versus runtime-starvation accounting and
-  allocation-free per-stage DSP timing exported from the native engine.
+Detailed scope: [stabilization plan](superpowers/plans/2026-09-20-stabilization.md), [delivery roadmap](ROADMAP.md), [20-feature acceptance criteria](FEATURES_20_ROADMAP.md). Historical handoff checkpoints remain in Git history.

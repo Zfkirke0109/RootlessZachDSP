@@ -4,6 +4,10 @@ import android.content.Context
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.test.core.app.ActivityScenario
+import androidx.recyclerview.widget.RecyclerView
+import androidx.test.espresso.contrib.RecyclerViewActions
+import androidx.test.espresso.matcher.ViewMatchers.hasDescendant
+import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.click
@@ -53,6 +57,7 @@ class SettingsDiagnosticsNavigationTest {
     fun settingsRemainsReachableFromMainScreen() {
         ActivityScenario.launch(MainActivity::class.java).use {
             openSettingsFromVisibleToolbarAction()
+            scrollToDiagnostics()
             onView(withText(R.string.rootless_zach_diagnostics_title))
                 .check(matches(isDisplayed()))
                 .perform(click())
@@ -63,9 +68,16 @@ class SettingsDiagnosticsNavigationTest {
             pressBack()
 
             openSettingsFromVisibleToolbarAction()
+            scrollToDiagnostics()
             onView(withText(R.string.rootless_zach_diagnostics_title))
                 .check(matches(isDisplayed()))
         }
+    }
+
+    private fun scrollToDiagnostics() {
+        onView(withId(androidx.preference.R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.rootless_zach_diagnostics_title))))
     }
 
     private fun openSettingsFromVisibleToolbarAction() {

@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.os.Process
 import me.timschneeberger.rootlessjamesdsp.utils.isRootless
-import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.ISessionInfoDump
@@ -55,18 +54,15 @@ class DumpManager constructor(val context: Context): KoinComponent {
         preferences.registerOnSharedPreferenceChangeListener(preferencesListener)
     }
 
-    fun dumpSessions(): ISessionInfoDump? {
+    fun collectSessions(): SessionSnapshotSelector.Result {
         val method = activeDumpMethod
         val methods = listOf(method) + if (allowFallback) {
             availableDumpMethods.keys.filter { it != method && it != Method.AudioFlingerService }
         } else emptyList()
-        val result = SessionSnapshotSelector.select(
+        return SessionSnapshotSelector.select(
             methods.map { selected -> { availableDumpMethods[selected]?.dump(context) } },
             Process.myUid(), isRootless(),
         )
-        CaptureSessionStatus.queryCompleted(result.dump != null, result.usableSessions,
-            result.providersTried, result.failedProviders)
-        return result.dump
     }
 
     fun dumpCaptureAllowlistLog(): ISessionPolicyInfoDump? {

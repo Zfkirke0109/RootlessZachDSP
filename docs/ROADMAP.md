@@ -1,35 +1,34 @@
 # RootlessZachDSP roadmap
 
-Status date: 2026-07-22. This file distinguishes merged, draft-branch, local-only,
-and planned work so that an implementation is never mistaken for a released feature.
+Status date: 2026-09-20. PR #12 is the active draft integration; master contains the shared signing change. Nothing here implies a release or physical validation of the integrated head.
 
 ## Current delivery state
 
 | Workstream | Evidence-backed state |
 |---|---|
-| Production `master` | Only the shared signing-workflow change is merged. There is no GitHub Release yet. |
-| Rebrand, credit, startup identity fix | Implemented in draft PR #1 and verified on the S23 Ultra; not merged to `master`. |
-| Partial reads/writes, telemetry, fail-open recovery | Implemented across draft PRs and exercised on the S23 Ultra at 48 kHz stereo. Current build has no startup crash; route/recovery stress coverage is still incomplete. |
-| Structured diagnostics and source/headroom evidence | Implemented in green draft PRs #8, #10, and #11. Measurement ends at AudioTrack input; final system mix is explicitly not measured. |
-| App capture allowlist UI | Integrated local work now uses the same inclusive UID policy for playback capture and muting-session admission, including an empty allowlist. Unit/build validation passes; S23 Ultra behavior is still unverified. |
-| Direct Player and USB negotiation | Integrated local work adds FLAC, WavPack, correction-file truth states, and DSP staging. Lifecycle, fallback, early-EOF, metadata-budget, and diagnostics-isolation fixes compile and pass unit tests; USB hardware validation remains pending. |
-| Release signing | Shared secret contract is merged, but the stacked feature branches still need reconciliation and signer-continuity validation. |
+| Integration | Master signing commit reconciled into PR #12; stacked draft history retained. |
+| Capture, targeting and telemetry | Implemented in the draft; September log shows idle/zero-frame behavior that still needs active-source investigation. |
+| Startup and session lifecycle | Cleanup ownership/order, coalesced IO polling, late-result rejection and session fallback changes implemented; current checks tracked in the PR. |
+| Convolution | Missing/empty/corrupt IR status and decoded-data validation implemented; valid-IR device exercise pending. |
+| Direct Player | FLAC/WavPack, correction-file states, USB negotiation and SAF folder browsing implemented in the draft; Samsung provider and USB hardware proof pending. |
+| Signing | Shared secret contract reconciled; CI checks persistent certificate for trusted push artifacts. Installed-device certificate still needs comparison. |
 
 ## Active stabilization gate
 
-1. Preserve the integrated FLAC/WavPack/allowlist work on `codex/integrated-roadmap-debug-20260721` and open one draft PR to `master`.
-2. Re-run lint after the latest safety fixes; unit tests and four-ABI native assembly currently pass locally.
-3. Reconcile `.github/workflows/build.yml` with the merged `KEYSTORE_*` plus `EXPECTED_SIGNER_SHA256` contract and retain persistent debug signing.
-4. Obtain a CI APK whose package, version, full signing certificate, 16 KiB alignment, and checksum are verified before updating the installed app.
-5. Repeat speaker, Bluetooth, screen-lock, app-switch, allowlist, Direct Player, USB-route, and recovery tests on the Galaxy S23 Ultra.
-6. Audit Diagnostics memory after the 200-event view; current device evidence shows high retained PSS but does not yet prove the owner.
+1. Complete CI on the integrated source: tests, rootless assembly, root Kotlin compilation, lint, emulator and APK verification.
+2. Retain a trusted-push artifact with package, version, full certificate, alignment and checksum evidence.
+3. Follow the [Android 17 / One UI 9.0 device checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md), including capture, IR, WavPack intake and USB routing.
+4. Stop for the owner to request GitHub review on draft PR #12. No merge or release is authorized by this checkpoint.
+5. Reconcile distinct PR #4 startup/runtime underrun work in a focused follow-up; preserve the newer baseline/percentile implementation.
 
 ## Open proof gaps
 
-- The installed S23 Ultra build remains `b97bd21`; the new local debug APK has a different signer and must not replace it.
+- The September log reports `f61a292` but contains later startup text; clean build provenance is unresolved for that old installed artifact.
+- API 35 emulator success cannot certify Samsung Android 17. July Android 16 evidence remains historical.
 - `finalSystemMixMeasured=false` is intentional: AudioTrack input is measured, not the downstream Android/Samsung mix or DAC output.
-- Direct USB mode still needs a real DAC capability matrix and routed-device evidence; no MQA decoding or unfolding is claimed.
-- Non-seekable lossless documents are staged safely, but cache reuse/cancellation and repeated metadata loading remain optimization work.
+- Direct USB needs real capability and routed-device evidence. MQA remains research only.
+- Non-seekable documents use bounded staging, but cancellation/cache reuse and repeated metadata-load optimization remain follow-up work.
+- Event-view memory retention remains an investigation; no owner has been proven.
 
 ## Feature roadmap
 
@@ -37,9 +36,9 @@ and planned work so that an implementation is never mistaken for a released feat
 |---|---|---|
 | P0 | Adaptive transport, deadline/underrun telemetry, crossfaded fail-open recovery | Implemented in drafts; stabilize shrink hysteresis and complete route/recovery device matrix. |
 | P0 | Compatibility diagnostics and privacy-safe export | Implemented in drafts; fix optional-file noise and investigate event-view memory retention. |
-| P0 | App allowlist/exclusion picker | Inclusive session-admission fix and tests implemented locally; verify matching-UID capture and no-silence behavior on device. |
-| P0 | Secure signed releases, checksums, 16 KiB support | Workflow pieces exist; consolidate branches, prove signer continuity, then publish the first prerelease. |
-| P1 | Native FLAC/WavPack Direct Player and truthful USB mode | Local build/tests pass; complete lifecycle/failure stress, memory profiling, and USB DAC capability proof. |
+| P0 | App allowlist/exclusion picker | Inclusive session-admission fix and tests present in PR #12; verify matching-UID capture and no-silence behavior on device. |
+| P0 | Secure signed releases, checksums, 16 KiB support | Reconciled workflow; prove installed signer continuity and pass review before planning a prerelease. |
+| P1 | Native FLAC/WavPack Direct Player and truthful USB mode | Implemented in PR #12; complete current CI, provider/lifecycle stress and USB DAC capability proof. |
 | P1 | DynamicsProcessing fallback for capture-blocked apps | Planned; must be session-scoped and mutually exclusive with full capture DSP. |
 | P1 | App-plus-device rules and Tasker/MacroDroid intents | Planned; document actions, permissions, priority, and state broadcasts. |
 | P1 | Pre/post spectrum, peak/true-peak, LUFS, and gain-reduction meters | Planned; bound refresh rate and memory/CPU cost. |

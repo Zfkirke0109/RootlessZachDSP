@@ -1,5 +1,6 @@
 package me.timschneeberger.rootlessjamesdsp.session.dump
 
+import me.timschneeberger.rootlessjamesdsp.session.dump.data.AudioPolicyServiceDump
 import me.timschneeberger.rootlessjamesdsp.model.AudioSessionDumpEntry
 import me.timschneeberger.rootlessjamesdsp.session.dump.data.AudioServiceDump
 import org.junit.Assert.*
@@ -38,5 +39,12 @@ class SessionSnapshotSelectorTest {
         val result = SessionSnapshotSelector.select(listOf({ notification }, { error("must not read") }), 10, false)
         assertSame(notification, result.dump)
         assertEquals(1, result.providersTried)
+    }
+    @Test fun `fallback preserves policy evidence from an earlier provider`() {
+        val policies = AudioPolicyServiceDump(hashMapOf(0 to entry(10)), hashMapOf("example.player" to false))
+        val sessions = AudioServiceDump(hashMapOf(9 to entry(40)))
+        val result = SessionSnapshotSelector.select(listOf({ policies }, { sessions }), 10, true)
+        assertSame(sessions, result.dump)
+        assertSame(policies, result.policies)
     }
 }

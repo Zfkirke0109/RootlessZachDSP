@@ -1,5 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.player.documents
 
+import android.content.ContentResolver
+import android.database.Cursor
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.appcompat.app.AlertDialog
@@ -13,7 +15,12 @@ import kotlinx.coroutines.withContext
 import me.timschneeberger.rootlessjamesdsp.R
 
 /** Reads only immediate children of the user-granted SAF tree, independent of picker MIME filters. */
-internal class AudioFolderBrowser(private val activity: AppCompatActivity) {
+internal class AudioFolderBrowser(
+    private val activity: AppCompatActivity,
+    private val readChildren: (Uri, String, Boolean) -> AudioFolderListing = { tree, parent, correction ->
+        AudioFolderDocuments.read(activity.contentResolver, tree, parent, correction)
+    },
+) {
     private var job: Job? = null
     private var dialog: AlertDialog? = null
     private var generation = 0
@@ -34,7 +41,7 @@ internal class AudioFolderBrowser(private val activity: AppCompatActivity) {
         val expected = ++generation
         job = activity.lifecycleScope.launch {
             val result = try {
-                Result.success(withContext(Dispatchers.IO) { read(tree, path.last(), correction) })
+                Result.success(withContext(Dispatchers.IO) { readChildren(tree, path.last(), correction) })
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -42,7 +49,7 @@ internal class AudioFolderBrowser(private val activity: AppCompatActivity) {
             }
             if (expected != generation || activity.isFinishing || activity.isDestroyed) return@launch
             result.onSuccess { listing ->
-                val entries = listing.entries.sortedWith(compareBy<Entry> { !it.directory }.thenBy { it.name.lowercase() })
+                val entries = listing.entries.sortedWith(compareBy<AudioFolderEntry> { !it.directory }.thenBy { it.name.lowercase() })
                 val labels = entries.map { if (it.directory) "${it.name}/" else it.name }.toTypedArray()
                 val builder = AlertDialog.Builder(activity)
                     .setTitle(if (correction) R.string.direct_player_folder_correction else R.string.direct_player_folder_audio)
@@ -66,31 +73,36 @@ internal class AudioFolderBrowser(private val activity: AppCompatActivity) {
         }
     }
 
-    private fun read(tree: Uri, parent: String, correction: Boolean): Listing {
+}
+
+internal data class AudioFolderEntry(val id: String, val name: String, val directory: Boolean)
+internal data class AudioFolderListing(val entries: List<AudioFolderEntry>, val truncated: Boolean)
+
+internal object AudioFolderDocuments {
+    fun read(resolver: ContentResolver, tree: Uri, parent: String, correction: Boolean): AudioFolderListing {
         val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE)
-        val entries = mutableListOf<Entry>()
-        var scanned = 0
-        var truncated = false
-        val cursor = activity.contentResolver.query(uri, columns, null, null, null)
+        val cursor = resolver.query(uri, columns, null, null, null)
             ?: error("Document provider returned no cursor")
-        cursor.use {
-            while (it.moveToNext()) {
-                if (++scanned > MAX_CHILDREN) { truncated = true; break }
-                val id = it.getString(0) ?: continue
-                val name = it.getString(1) ?: continue
-                val mime = it.getString(2)
-                val directory = mime == DocumentsContract.Document.MIME_TYPE_DIR
-                if (directory || AudioDocumentSelection.accepts(name, mime, correction)) {
-                    entries.add(Entry(id, name, directory))
-                }
-            }
-        }
-        return Listing(entries, truncated)
+        return cursor.use { collect(it, correction) }
     }
 
-    private data class Entry(val id: String, val name: String, val directory: Boolean)
-    private data class Listing(val entries: List<Entry>, val truncated: Boolean)
-    companion object { private const val MAX_CHILDREN = 1000 }
+    fun collect(cursor: Cursor, correction: Boolean): AudioFolderListing {
+        val entries = mutableListOf<AudioFolderEntry>()
+        var scanned = 0
+        var truncated = false
+        while (cursor.moveToNext()) {
+            if (++scanned > MAX_CHILDREN) { truncated = true; break }
+            val id = cursor.getString(0) ?: continue
+            val name = cursor.getString(1) ?: continue
+            val mime = cursor.getString(2)
+            val directory = mime == DocumentsContract.Document.MIME_TYPE_DIR
+            if (directory || AudioDocumentSelection.accepts(name, mime, correction)) {
+                entries.add(AudioFolderEntry(id, name, directory))
+            }
+        }
+        return AudioFolderListing(entries, truncated)
+    }
+    private const val MAX_CHILDREN = 1000
 }

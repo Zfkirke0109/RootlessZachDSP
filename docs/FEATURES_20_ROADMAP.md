@@ -2,6 +2,10 @@
 
 This roadmap begins after the foundation transport work in PR #1. Each milestone is independently reviewable, measurable, and reversible. No feature is considered device-validated until it runs on physical Android hardware.
 
+## September 20 stabilization gate
+
+The active integration is draft PR #12 on `codex/integrated-roadmap-debug-20260721`. Baseline capture-policy, Direct Player and diagnostics work does not complete all expanded acceptance criteria below. Finish fresh CI, then Samsung Android 17 / One UI 9.0 capture, document-provider and USB checks before advancing milestones. See [current handoff](AGENT_HANDOFF.md) and [device checklist](device-validation/S23_ULTRA_ANDROID17_20260920.md). The owner will request GitHub review personally; no merge or release is implied.
+
 ## Global rules
 
 - Preserve GPL attribution and upstream history.

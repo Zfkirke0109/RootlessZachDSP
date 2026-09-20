@@ -13,7 +13,7 @@ fun Project.getCommitCount(): String {
 
 fun Project.getGitSha(): String {
     val sha = runCommand("git rev-parse --short HEAD")
-    val dirty = runCommand("git status --porcelain --untracked-files=no").isNotBlank()
+    val dirty = runCommand("git status --porcelain --untracked-files=normal").isNotBlank()
     return sha + if (dirty) "-dirty" else ""
     // return "1"
 }

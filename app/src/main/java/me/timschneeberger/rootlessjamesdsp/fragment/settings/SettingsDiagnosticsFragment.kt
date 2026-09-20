@@ -71,7 +71,7 @@ class SettingsDiagnosticsFragment : SettingsBaseFragment() {
         val recentCount = RootlessZachDiagnostics.readRecentLines(200).size
         findPreference<Preference>(getString(R.string.key_diagnostics_engine_status))?.summary =
             if (transport == null) {
-                getString(R.string.rootless_zach_diagnostics_no_telemetry)
+                getString(R.string.rootless_zach_diagnostics_no_telemetry) + "\n" + CaptureSessionStatus.summary()
             } else {
                 buildString {
                     append(transport.compactString())

@@ -1,5 +1,9 @@
 package me.timschneeberger.rootlessjamesdsp.session.shared
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -46,5 +50,25 @@ class SessionPollerTest {
         gate.complete(Unit); advanceUntilIdle()
         assertEquals(listOf(2), applied)
         poller.close()
+    }
+    @Test fun `close interrupts a blocked synchronous provider without late application`() = runTest {
+        val entered = CountDownLatch(1)
+        val exited = CountDownLatch(1)
+        val blocked = CountDownLatch(1)
+        val applied = mutableListOf<Int>()
+        val poller = SessionPoller(this, Dispatchers.IO, {
+            runInterruptible {
+                entered.countDown()
+                try { blocked.await(); 1 } finally { exited.countDown() }
+            }
+        }, { applied.add(it) })
+        try {
+            poller.request(); runCurrent()
+            assertTrue("provider entered", entered.await(5, TimeUnit.SECONDS))
+            poller.close()
+            assertTrue("provider interrupted", exited.await(5, TimeUnit.SECONDS))
+            advanceUntilIdle()
+            assertTrue(applied.isEmpty())
+        } finally { blocked.countDown(); poller.close() }
     }
 }

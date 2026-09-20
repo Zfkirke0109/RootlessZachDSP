@@ -1,5 +1,7 @@
 package me.timschneeberger.rootlessjamesdsp.session.shared
 
+import me.timschneeberger.rootlessjamesdsp.session.dump.SessionSnapshotSelector
+import me.timschneeberger.rootlessjamesdsp.diagnostics.CaptureSessionStatus
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -62,12 +64,21 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     // Polling job
     private val pollingScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var destroyed = false
-    protected data class PollSnapshot(val sessions: ISessionInfoDump?, val policies: ISessionPolicyInfoDump? = null)
-    protected open fun collectSnapshot(): PollSnapshot = PollSnapshot(dumpManager.dumpSessions())
+    protected data class PollSnapshot(val selection: SessionSnapshotSelector.Result,
+        val policies: ISessionPolicyInfoDump? = selection.policies) {
+        val sessions get() = selection.dump
+    }
+    protected open fun collectSnapshot(): PollSnapshot = PollSnapshot(dumpManager.collectSessions())
     protected open fun applySnapshot(snapshot: PollSnapshot) = handleSessionDump(snapshot.sessions)
     private val poller = SessionPoller(pollingScope, Dispatchers.IO,
         collect = { runInterruptible { collectSnapshot() } },
-        apply = { applySnapshot(it) },
+        apply = {
+            // Publish only after SessionPoller has checked lifecycle and method generation.
+            val result = it.selection
+            CaptureSessionStatus.queryCompleted(result.dump != null, result.usableSessions,
+                result.providersTried, result.failedProviders)
+            applySnapshot(it)
+        },
         onFailure = { Timber.w(it, "Session snapshot unavailable") })
     private var continuousPollingJob: Job? = null
 
